@@ -1,0 +1,4 @@
+[test]
+# The environment contract is parsed at import, so every test file would have
+# to set the required variables before its first import without this.
+preload = ["./test/setup.ts"]

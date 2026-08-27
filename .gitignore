@@ -1,0 +1,21 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.idea/
+.routecraft/
+
+# Runtime state the harness writes. The folders are tracked (each carries a
+# .gitkeep) so a fresh clone has somewhere to write; their contents are yours.
+workspace/*
+!workspace/.gitkeep
+memory/*
+!memory/.gitkeep
+state/*
+!state/.gitkeep
+skills/proposed/*
+!skills/proposed/.gitkeep

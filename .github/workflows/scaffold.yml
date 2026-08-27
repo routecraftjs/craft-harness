@@ -1,0 +1,48 @@
+name: Scaffold
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  schedule:
+    # The published canary moves without this repository changing, so the
+    # check runs on a clock as well as on a push.
+    - cron: "0 6 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The path a user actually takes: create-routecraft pulls this repository by
+  # URL, merges it over the base scaffold, and the result has to boot. It
+  # exercises the URL-example path end to end, which is the one thing this
+  # repository's own CI cannot check by running in place.
+  #
+  # Guarded to the template repository: a project scaffolded FROM this
+  # template inherits the workflow file, and cloning craft-harness into it
+  # would be a check about somebody else's repository.
+  scaffold:
+    if: github.repository == 'routecraftjs/craft-harness'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Scaffold a project from this branch
+        run: |
+          bunx create-routecraft@canary my-agent \
+            --yes --use-bun --no-git \
+            --example "https://github.com/${{ github.repository }}/tree/${{ github.head_ref || github.ref_name }}/"
+      - name: The scaffold kept its own identity
+        working-directory: my-agent
+        run: |
+          test "$(bun -e 'console.log(require("./package.json").name)')" = "my-agent"
+      - name: Boot the scaffolded project
+        working-directory: my-agent
+        env:
+          NODE_ENV: development
+          LLM_API_KEY: not-a-real-key
+          ROUTECRAFT_SUSPENSION_SECRET: ci-secret-at-least-thirty-two-bytes
+          SCHEDULER_CRON: "*/2 * * * * *"
+        run: bun run boot-check

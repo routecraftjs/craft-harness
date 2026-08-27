@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Everything a contributor runs locally, run the same way. The template is
+  # its own repository precisely so it gets this: inside the routecraft
+  # monorepo, template files reach neither tsc nor ESLint.
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run format
+      - run: bun run typecheck
+      - run: bun run lint
+      - run: bun run test
+
+  # The promise the template makes: a fresh clone boots with no secrets. The
+  # only value set here is the suspension signing secret, which the framework
+  # demands the moment a route can park, and a model key that is deliberately
+  # not a working one.
+  #
+  # The terminal outcome `--once` waits for is the scheduler tick, which fires
+  # on its own cron, finds nothing due and drops. That is the one exchange
+  # this project produces without reaching anything external, which is what
+  # makes it the boot check.
+  boot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Boot with no secrets
+        env:
+          NODE_ENV: development
+          LLM_API_KEY: not-a-real-key
+          ROUTECRAFT_SUSPENSION_SECRET: ci-secret-at-least-thirty-two-bytes
+          # Six fields adds seconds, so the tick fires inside the timeout
+          # instead of at the top of the next minute.
+          SCHEDULER_CRON: "*/2 * * * * *"
+        run: bun run boot-check
