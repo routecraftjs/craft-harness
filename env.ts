@@ -78,6 +78,12 @@ const envSchema = z.object({
   // demands an HTTPS MCP_URL, which is the difference `bun run dev` makes.
   NODE_ENV: z.enum(["development", "test", "production"]).default("production"),
 
+  // The one credential that secures every surface this harness exposes.
+  // `bun run setup` generates it; nothing in the repository ever holds it.
+  // 32 characters is the floor rather than a preference: the key is a bearer
+  // credential on a listening port, and a short one is guessable offline.
+  CRAFT_API_KEY: z.string().min(32),
+
   LLM_API_KEY: z.string().min(1),
   LLM_PROVIDER: z
     .enum(["anthropic", "openai", "gemini", "openrouter", "ollama", "lmstudio"])
@@ -98,18 +104,21 @@ const envSchema = z.object({
   // here so a short secret fails naming the variable rather than deep inside
   // plugin startup.
   ROUTECRAFT_SUSPENSION_SECRET: z.string().min(32),
-  APPROVAL_BASE_URL: z.url().default("http://localhost:8081"),
+  APPROVAL_BASE_URL: z.url().default("http://localhost:8080"),
   APPROVERS: approvers,
 
-  HTTP_PORT: z.coerce.number().int().positive().default(8081),
-  MCP_PORT: z.coerce.number().int().positive().default(8082),
+  // The human-facing surface: an approval link someone opens from their mail
+  // client, so it takes the conventional application port.
+  HTTP_PORT: z.coerce.number().int().positive().default(8080),
+  MCP_PORT: z.coerce.number().int().positive().default(8081),
   // Also the MCP resource identifier (RFC 9728), which the transport requires
   // outside development and test. It must be the URL a client actually
   // reaches, so a deployment behind a proxy sets its public address here.
-  MCP_URL: z.url().default("http://localhost:8082"),
-  // 8080 because that is where `craft exec` and `craft ops` look by
-  // default. Moving it means passing `--url` on every command.
-  OPS_PORT: z.coerce.number().int().positive().default(8080),
+  MCP_URL: z.url().default("http://localhost:8081"),
+  // Management, kept off the application port. `craft exec` looks at 8080 by
+  // default, but `bun run setup` writes the real url into
+  // `.routecraft/settings.yaml`, so the CLI never needs the default or a flag.
+  OPS_PORT: z.coerce.number().int().positive().default(9090),
 
   MAIL_ADDRESS: z.union([z.email(), z.literal("")]).default(""),
   MAIL_APP_PASSWORD: z.string().default(""),
@@ -123,15 +132,28 @@ const envSchema = z.object({
 export const env = envSchema.parse(process.env);
 
 /**
- * Whether the mail capabilities are configured.
+ * Why the mail capabilities are dormant, or `true` when they are not.
  *
- * Two values decide it, and they decide it in two places: `craft.config.ts`
- * omits the `mail` config key when this is false, and the mail capability
- * modules export no routes. Both halves read this one predicate so a
- * half-configured mailbox cannot produce routes with no accounts behind them.
+ * The shape `.enabled()` wants: `true` starts the route, and a string both
+ * stops it and becomes the reason `/ops` reports. Returning the reason from
+ * the same expression that decides is what stops the two drifting apart, so
+ * the message an operator reads always names the variables actually missing
+ * rather than a sentence someone wrote once.
+ *
+ * `craft.config.ts` reads the same predicate to decide whether to declare a
+ * mail account at all, because an account with no credentials behind it is
+ * not a useful thing to configure.
  */
-export const mailConfigured =
-  env.MAIL_ADDRESS !== "" && env.MAIL_APP_PASSWORD !== "";
+export function mailEnabled(): true | string {
+  const missing = [
+    ...(env.MAIL_ADDRESS === "" ? ["MAIL_ADDRESS"] : []),
+    ...(env.MAIL_APP_PASSWORD === "" ? ["MAIL_APP_PASSWORD"] : []),
+  ];
+  return missing.length === 0 ? true : `${missing.join(", ")} unset`;
+}
+
+/** Whether a mailbox is configured, for the config that declares the account. */
+export const mailConfigured = mailEnabled() === true;
 
 /** Model reference in the `provider:model` form the DSL takes. */
 export const modelId = `${env.LLM_PROVIDER}:${env.LLM_MODEL}` as const;

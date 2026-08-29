@@ -38,11 +38,17 @@ jobs:
         working-directory: my-agent
         run: |
           test "$(bun -e 'console.log(require("./package.json").name)')" = "my-agent"
+      - name: Generate the scaffolded project's credentials
+        working-directory: my-agent
+        run: bun run setup
+      - name: The scaffold is walled from its first boot
+        working-directory: my-agent
+        run: |
+          grep -q '^CRAFT_API_KEY=.\{32,\}' .env
+          grep -q '^token: .\{32,\}' .routecraft/settings.yaml
       - name: Boot the scaffolded project
         working-directory: my-agent
         env:
-          NODE_ENV: development
           LLM_API_KEY: not-a-real-key
-          ROUTECRAFT_SUSPENSION_SECRET: ci-secret-at-least-thirty-two-bytes
           SCHEDULER_CRON: "*/2 * * * * *"
         run: bun run boot-check

@@ -11,9 +11,11 @@ its owner can read and change. There is no hidden tooling: if you cannot do
 something, the honest answer is that no capability does it yet, and the fix
 is for someone to add one.
 
-Your tool list is assembled in `craft.config.ts` rather than declared here,
-because some of it depends on what is configured: the mail capabilities only
-exist when a mailbox does, and YAML cannot ask that question.
+Your tool list is declared in `craft.config.ts` and filtered by what this
+deployment has switched on. A capability whose credentials are missing is
+disabled, and a disabled capability is never offered to you: if a tool you
+expected is not in your list, it is off rather than broken, and the fix is
+someone configuring it.
 
 ## How to work
 

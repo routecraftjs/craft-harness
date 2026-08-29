@@ -10,23 +10,26 @@ import type { ChatInput } from "../../chat/chat/route.js";
  * shipped this on would bill every scaffolded project for a model call an
  * hour before its owner had read the README.
  *
- * Turning it on is one variable, `HEARTBEAT_ENABLED=true`. It is off by
- * being unconstructed rather than by a runtime flag: with the flag unset
- * this module exports no routes, so there is no timer, no route in the
- * registry, and nothing to notice in a log.
+ * Turning it on is one variable, `HEARTBEAT_ENABLED=true`. Off, the route is
+ * registered and not started: no timer arms, nothing is dispatched, and
+ * `/ops` reports it disabled with the variable to set. Visible and off beats
+ * absent, because absent is also what a route nobody wrote looks like.
  *
  * A heartbeat lands in its own conversation, so its transcript is separate
  * from whatever a person is talking about.
  */
-const heartbeat = craft()
+export default craft()
   .id("heartbeat")
   .description("Ask the agent on a timer whether anything needs doing.")
+  .enabled(() =>
+    env.HEARTBEAT_ENABLED ? true : "HEARTBEAT_ENABLED is not true",
+  )
   .from(
     timer({
-      intervalMs: env.HEARTBEAT_INTERVAL_MS,
+      interval: env.HEARTBEAT_INTERVAL_MS,
       // The first beat waits a full interval. A beat at boot would fire on
       // every restart, which turns a crash loop into a spend loop.
-      delayMs: env.HEARTBEAT_INTERVAL_MS,
+      delay: env.HEARTBEAT_INTERVAL_MS,
     }),
   )
   .transform((): ChatInput => ({
@@ -36,5 +39,3 @@ const heartbeat = craft()
   }))
   .enrich(direct("chat"))
   .to(log());
-
-export default env.HEARTBEAT_ENABLED ? [heartbeat] : [];

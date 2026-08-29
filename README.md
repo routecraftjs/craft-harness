@@ -15,18 +15,16 @@ and this repository is what a project built on it looks like.
 bunx create-routecraft my-agent \
   --example https://github.com/routecraftjs/craft-harness
 cd my-agent
+bun run setup
 ```
 
-Write a `.env` with the two values that have no sensible default. `.env.schema`
-documents every variable this project reads; these are the ones that must be
-set before anything happens.
+`setup` generates the two secrets that cannot be committed, writes them to
+`.env` (gitignored), and writes `.routecraft/settings.yaml` so the CLI needs
+no flags. It replaces nothing on a rerun. One value is left for you:
 
 ```bash
-cat > .env <<'EOF'
-NODE_ENV=development
+# in .env
 LLM_API_KEY=sk-your-key-here
-ROUTECRAFT_SUSPENSION_SECRET=paste-openssl-rand-base64-32-here
-EOF
 ```
 
 Start it:
@@ -41,12 +39,19 @@ Talk to it, from another terminal:
 bun run exec chat --session=demo --message="what can you do?"
 ```
 
-Or connect an assistant to the MCP transport at `http://localhost:8082/mcp`
-and use the `chat-tool` tool. Both reach the same conversation: the transcript
-is a file, and `--session` names which one.
+No `--token`, no `--url`: the instance is walled and the settings file carries
+the credential. Or connect an assistant to the MCP transport at
+`http://localhost:8081/mcp`, presenting the same key as a bearer token, and use
+the `chat-tool` tool. Both reach the same conversation: the transcript is a
+file, and `--session` names which one.
 
 That is the whole loop. Everything below is what each part does and what it
 refuses to do until you configure it.
+
+### Cloning instead of scaffolding
+
+A clone has no `.env` and no `.routecraft/`, because both are gitignored.
+`bun run setup` is the same command and fills both in.
 
 ## What is here
 
@@ -55,7 +60,8 @@ capabilities/     one folder per capability, each with a route.ts
 agents/           aria.md (flat) and researcher/ (a bundle with its own skills)
 skills/           house skills every agent gets; skills/proposed/ is a drop box
 shared/           pure helpers: paths, transcripts, schedules, approvals
-craft.config.ts   what discovery cannot work out on its own
+scripts/setup.ts  generates this project's own credentials, once
+craft.config.ts   what discovery cannot work out on its own, security included
 env.ts            the environment contract, parsed once at boot
 .env.schema       the same contract for a person, with no values in it
 ```
@@ -64,6 +70,90 @@ env.ts            the environment contract, parsed once at boot
 from disk, so nothing is registered by hand. Read
 [project structure](https://routecraft.dev/docs/introduction/project-structure)
 for the convention.
+
+## Security
+
+The harness is walled from the first boot, with the static-key rung of
+Routecraft's [credential ladder](https://routecraft.dev/docs/advanced/securing-capabilities)
+pre-applied.
+
+`bun run setup` generates `CRAFT_API_KEY` into `.env`. One validator in
+`craft.config.ts` compares against it with `timingSafeStringEqual`, and all
+three listeners use that one validator: the approval endpoint, the MCP
+transport, and the ops door. One credential, one comparison, every surface.
+Nothing in this repository ever holds the key, and nothing mints one at boot.
+
+The ops tiers are scope-gated (`ops:introspection`, `ops:dispatch`) and the
+validator puts those scopes on the principal it returns. `setup` also writes
+the key and the ops url into `.routecraft/settings.yaml`, which is why
+`craft exec` needs no flags against a walled instance.
+
+A refused caller is told what to do about it:
+
+```
+$ craft exec --token wrong-key list-schedules
+Refused: the instance rejected the credential (invalid_token).
+The instance advertises no authorization server, so discovery cannot say who
+issues. Ask whoever operates the instance how to obtain a credential.
+Scopes this surface understands: ops:introspection, ops:dispatch.
+```
+
+That is not the harness explaining itself. Every 401 carries an RFC 9728
+`resource_metadata` hint, the instance serves the document it points at, and
+the CLI follows it. With a static key there is no issuer to discover, and the
+message says so rather than inventing one.
+
+**Rotating** is deleting `CRAFT_API_KEY` from `.env` and
+`.routecraft/settings.yaml` and running `bun run setup` again. Setup never
+replaces a value that is there, so rotation is something you do rather than
+something that happens to you.
+
+**Moving up the ladder** is a change to one object in `craft.config.ts`:
+`jwt({ secret, issuer, audience })` for tokens you mint yourself,
+`jwks({ jwksUrl, issuer, audience })` for a real identity provider. Every
+surface follows and no route changes, because a route says what it needs
+(`.authorize()`) and never how a credential is verified.
+
+**The one public surface** is the approvals mount, and that is deliberate: an
+approver clicks a link from their mail client and has no API key. Their
+credential is the single-use token in the URL. See
+[the approval security model](#the-security-model-plainly) below.
+
+## What is switched off, and why you can tell
+
+Three routes in a fresh scaffold are registered and not running. They are not
+missing, and that difference is the point: a route nobody wrote looks exactly
+like a route that is deliberately off, and only one of those is something you
+can fix.
+
+```
+$ craft ops routes
+ROUTE          DISPATCHABLE  ENABLED  SOURCES
+heartbeat      no            no       timer    Ask the agent on a timer ...
+mail-inbox     no            no       mail     Answer mail that arrives ...
+mail-reply     no            no       direct   Send an email.
+```
+
+`craft ops health` says why:
+
+```json
+"mail-inbox": {
+  "status": "inactive",
+  "details": {
+    "lifecycle": "disabled",
+    "reason": "MAIL_ADDRESS, MAIL_APP_PASSWORD unset"
+  }
+}
+```
+
+The reason is the predicate's own return value, so it names the variables
+actually missing rather than a sentence someone wrote once. `inactive` rather
+than `down`: a deliberate configuration state must not degrade health.
+
+A disabled route is also absent from the agent's tool surface. Aria's tool
+list names `Direct(mail-reply)` unconditionally; enablement removes it. "The
+agent cannot send mail until a mailbox is configured" is therefore true by
+construction rather than by the model behaving well.
 
 ## Chat
 
@@ -150,9 +240,9 @@ each due task to `chat`. `list-schedules` and `cancel-schedule` are the rest.
 Because the file is the state, a task survives a restart.
 
 `heartbeat` asks the agent on a timer whether anything needs doing. It is
-**off by default** and off by being unconstructed: with `HEARTBEAT_ENABLED`
-unset, that module exports no routes at all. An agent that wakes itself up
-spends money while nobody is watching.
+**off by default**: with `HEARTBEAT_ENABLED` unset the route is registered and
+not started, and `craft ops health` says which variable turns it on. An agent
+that wakes itself up spends money while nobody is watching.
 
 ## Approvals
 
@@ -165,6 +255,15 @@ The parked half is `approval-park`, which suspends with a 30 minute TTL. Its
 continuation runs when someone answers, possibly days later and certainly in a
 different process, and posts the verdict back into the conversation that asked.
 `approval-callback` is the one endpoint both links open.
+
+`approval-park` is declared `direct({ internal: true })`, and it is the one
+route here that is. It exists to be called by `request-approval` and by
+nothing else: it carries no `.authorize()` because its caller does, and its
+answer to any other caller is a suspension acknowledgment nobody asked for.
+Internal keeps the in-process call working exactly as before and closes both
+external doors, so it is absent from `craft exec`, refused by name if someone
+tries, never offered to the agent, and listed as `dispatchable: false`. Every
+other `direct()` route here is a boundary capability and stays open.
 
 ### The security model, plainly
 
@@ -206,10 +305,15 @@ An app passcode, not your account password: Gmail and its equivalents issue a
 separate credential for IMAP and SMTP. Hosts and ports are already set
 (`imap.gmail.com`, `smtp.gmail.com:587`); change them for another provider.
 
-Until both exist, `capabilities/mail/*` export no routes and `craft.config.ts`
-omits the `mail` key entirely. Nothing connects, nothing appears in the ops
-listing, and nothing in the agent's tool surface claims a mailbox exists. That
-is why this repository boots and passes CI with no secrets anywhere.
+Until both exist, both mail routes are `.enabled()`-disabled: registered,
+visible, not started, absent from the agent's tools, and reported by
+`craft ops health` as `MAIL_ADDRESS, MAIL_APP_PASSWORD unset`. No IMAP
+connection is opened and `craft.config.ts` declares no mail account, which is
+why this repository boots and passes CI with no secrets anywhere.
+
+Setting both and restarting is the whole activation. Nothing else changes: the
+tool list already names `Direct(mail-reply)`, and the route appearing is what
+puts it on aria's surface.
 
 `mail-inbox` gives each correspondent their own conversation. It does **not**
 decide who is allowed to talk to the agent: point it at a mailbox the public
@@ -248,19 +352,29 @@ parses the same set at boot, so a misconfigured deployment fails naming the
 variable rather than hours later inside a route.
 `test/env-contract.test.ts` fails the build when the two drift apart.
 
-Ports: ops on 8080 (where `craft exec` looks by default), approvals on 8081,
-MCP on 8082.
+Ports: approvals on 8080, MCP on 8081, ops on 9090. The application surface
+takes the conventional port because it is the one a human opens from their
+mail; management is kept off it. `craft exec` looks at 8080 by default, which
+would be the wrong door, and never needs to: `bun run setup` writes the real
+ops url into `.routecraft/settings.yaml`.
 
 ## Working on it
 
 ```bash
+bun run setup        # generate this project's credentials, once
 bun run all          # format, typecheck, lint, test
-bun run boot-check   # boot with no secrets and exit on the first exchange
+bun run boot-check   # boot and exit on the first exchange
 ```
 
-The boot check is what CI runs. Its terminal outcome is the scheduler tick
-finding nothing due and dropping, which is the one exchange this project
-produces without reaching anything external.
+The boot check is what CI runs, with a generated key and nothing else
+configured. Its terminal outcome is the scheduler tick finding nothing due and
+dropping, which is the one exchange this project produces without reaching
+anything external.
+
+The test suite pins its own environment rather than reading yours (see
+`test/setup.ts`). Half of it asserts what a scaffold does before anything is
+configured, and your `.env` would quietly turn those into assertions about
+your machine.
 
 ## What this is not
 

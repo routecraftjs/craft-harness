@@ -26,10 +26,11 @@ jobs:
       - run: bun run lint
       - run: bun run test
 
-  # The promise the template makes: a fresh clone boots with no secrets. The
-  # only value set here is the suspension signing secret, which the framework
-  # demands the moment a route can park, and a model key that is deliberately
-  # not a working one.
+  # The promise the template makes: a clone that has run setup boots, walled,
+  # with nothing else configured. `setup` generates the API key every surface
+  # verifies and the secret the suspension store signs links with; the model
+  # key is deliberately not a working one, and no mailbox, allowlist or search
+  # key is set at all.
   #
   # The terminal outcome `--once` waits for is the scheduler tick, which fires
   # on its own cron, finds nothing due and drops. That is the one exchange
@@ -43,12 +44,17 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
-      - name: Boot with no secrets
+      - name: Generate this instance's credentials
+        run: bun run setup
+      - name: Boot with a generated key and nothing else
         env:
-          NODE_ENV: development
           LLM_API_KEY: not-a-real-key
-          ROUTECRAFT_SUSPENSION_SECRET: ci-secret-at-least-thirty-two-bytes
           # Six fields adds seconds, so the tick fires inside the timeout
           # instead of at the top of the next minute.
           SCHEDULER_CRON: "*/2 * * * * *"
         run: bun run boot-check
+      - name: The generated credentials never reach the repository
+        run: |
+          test -z "$(git status --porcelain)" || {
+            echo "setup left tracked changes:"; git status --porcelain; exit 1;
+          }

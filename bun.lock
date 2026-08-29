@@ -7,9 +7,9 @@
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.50",
         "@modelcontextprotocol/server": "^2.0.0",
-        "@routecraft/ai": "0.7.0-canary-20260826174745",
-        "@routecraft/os": "0.7.0-canary-20260825180314",
-        "@routecraft/routecraft": "0.7.0-canary-20260826174745",
+        "@routecraft/ai": "0.7.0-canary-20260829135343",
+        "@routecraft/os": "0.7.0-canary-20260828101012",
+        "@routecraft/routecraft": "0.7.0-canary-20260829135343",
         "ai": "^6.0.0",
         "croner": "^10.0.1",
         "yaml": "^2.8.0",
@@ -17,9 +17,9 @@
       },
       "devDependencies": {
         "@eslint/js": "^10.0.1",
-        "@routecraft/cli": "0.7.0-canary-20260826174745",
-        "@routecraft/eslint-plugin-routecraft": "0.7.0-canary-20260826174745",
-        "@routecraft/testing": "0.7.0-canary-20260826174745",
+        "@routecraft/cli": "0.7.0-canary-20260829135343",
+        "@routecraft/eslint-plugin-routecraft": "0.7.0-canary-20260829135343",
+        "@routecraft/testing": "0.7.0-canary-20260829135343",
         "@types/node": "^25.3.5",
         "bun-types": "^1.1.0",
         "eslint": "^10.0.2",
@@ -98,17 +98,17 @@
 
     "@puppeteer/browsers": ["@puppeteer/browsers@2.13.2", "", { "dependencies": { "debug": "^4.4.3", "extract-zip": "^2.0.1", "progress": "^2.0.3", "proxy-agent": "^6.5.0", "semver": "^7.7.4", "tar-fs": "^3.1.1", "yargs": "^17.7.2" }, "bin": { "browsers": "lib/cjs/main-cli.js" } }, "sha512-5EUZSUIc37H6aIXyWO0Z4y8NlF8NnjgmqeQgOGiswAU7pY0HOo16ho4+alIWmSfdZnjqBRawMsP3I5YqLSn6kw=="],
 
-    "@routecraft/ai": ["@routecraft/ai@0.7.0-canary-20260826174745", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "ai": "^6.0.246" }, "peerDependencies": { "@ai-sdk/anthropic": "^3.0.50", "@ai-sdk/google": "^3.0.34", "@ai-sdk/openai": "^3.0.37", "@ai-sdk/openai-compatible": "^1.0.46", "@huggingface/transformers": "^3.8.1", "@modelcontextprotocol/client": "^2.0.0", "@modelcontextprotocol/node": "^2.0.0", "@modelcontextprotocol/server": "^2.0.0", "@openrouter/ai-sdk-provider": "^2.2.3", "@routecraft/routecraft": "0.7.0-canary-20260826174745", "ollama-ai-provider-v2": "^3.3.1", "yaml": "^2.8.0" }, "optionalPeers": ["@ai-sdk/anthropic", "@ai-sdk/google", "@ai-sdk/openai", "@ai-sdk/openai-compatible", "@huggingface/transformers", "@modelcontextprotocol/client", "@modelcontextprotocol/node", "@modelcontextprotocol/server", "@openrouter/ai-sdk-provider", "ollama-ai-provider-v2", "yaml"] }, "sha512-f0cXA4o3LFN6tCsWNxbr/67pu8LpkRJeI8Jj0n9Ceh+gVa91Zlx3XTbFfIwamejucpOITURge8d2ps7KFMxNjQ=="],
+    "@routecraft/ai": ["@routecraft/ai@0.7.0-canary-20260829135343", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "ai": "^6.0.246" }, "peerDependencies": { "@ai-sdk/anthropic": "^3.0.50", "@ai-sdk/google": "^3.0.34", "@ai-sdk/openai": "^3.0.37", "@ai-sdk/openai-compatible": "^1.0.46", "@huggingface/transformers": "^3.8.1", "@modelcontextprotocol/client": "^2.0.0", "@modelcontextprotocol/node": "^2.0.0", "@modelcontextprotocol/server": "^2.0.0", "@openrouter/ai-sdk-provider": "^2.2.3", "@routecraft/routecraft": "0.7.0-canary-20260829135343", "ollama-ai-provider-v2": "^3.3.1", "yaml": "^2.8.0" }, "optionalPeers": ["@ai-sdk/anthropic", "@ai-sdk/google", "@ai-sdk/openai", "@ai-sdk/openai-compatible", "@huggingface/transformers", "@modelcontextprotocol/client", "@modelcontextprotocol/node", "@modelcontextprotocol/server", "@openrouter/ai-sdk-provider", "ollama-ai-provider-v2", "yaml"] }, "sha512-EbfkMtyuAKCfaA0TGBB/C+h56nhmJGsHxz2Nlt3N9du8DY6jTGwRIsIimMn9o7RL5/1rIPU/z1CBHW+X+QZ6SQ=="],
 
-    "@routecraft/cli": ["@routecraft/cli@0.7.0-canary-20260826174745", "", { "dependencies": { "@opentelemetry/sdk-trace-base": "^2.10.0", "@routecraft/routecraft": "0.7.0-canary-20260826174745", "agent-browser": "^0.17.1", "cheerio": "^1.2.0", "commander": "^14.0.3", "croner": "^10.0.1", "dotenv": "^17.4.2", "execa": "^9.6.0", "fast-xml-parser": "^5.10.1", "imapflow": "^1.4.7", "ink": "^5.2.1", "jose": "^6.2.8", "mailparser": "^3.9.15", "nodemailer": "^6.10.1", "papaparse": "^5.5.4", "pino-pretty": "^13.1.3", "react": "^18.3.1", "shescape": "^3.0.2", "tsdav": "^2.3.1", "yaml": "^2.9.0" }, "bin": { "craft": "dist/index.js" } }, "sha512-nvTFtl83m0yczuryqKjwxHaBLFF+ctMfqofw0xPR1mEaPFsLboAs2k4tSF60UXZk42+Wg+ZZOrF5fGs6ubwUcw=="],
+    "@routecraft/cli": ["@routecraft/cli@0.7.0-canary-20260829135343", "", { "dependencies": { "@opentelemetry/sdk-trace-base": "^2.10.0", "@routecraft/routecraft": "0.7.0-canary-20260829135343", "agent-browser": "^0.17.1", "cheerio": "^1.2.0", "commander": "^14.0.3", "croner": "^10.0.1", "dotenv": "^17.4.2", "execa": "^9.6.0", "fast-xml-parser": "^5.10.1", "imapflow": "^1.4.7", "ink": "^5.2.1", "jose": "^6.2.8", "mailparser": "^3.9.15", "nodemailer": "^6.10.1", "papaparse": "^5.5.4", "pino-pretty": "^13.1.3", "react": "^18.3.1", "shescape": "^3.0.2", "tsdav": "^2.3.1", "yaml": "^2.9.0" }, "bin": { "craft": "dist/index.js" } }, "sha512-lTL9va9xWPvy5fdYfVcgr2TVOyGABYStE0mpzk1JwJLLC+TMteFnXuHFS/AZHTYldvgd2DAijD1i1L5oBoVzjg=="],
 
-    "@routecraft/eslint-plugin-routecraft": ["@routecraft/eslint-plugin-routecraft@0.7.0-canary-20260826174745", "", { "peerDependencies": { "eslint": ">=9" } }, "sha512-JybpLctrog7ZwwA0Iuqv0ucXSphyqZqd9kyB3hkdWxqzVLIKc8EbAogwnZ9kBJCvMw8WQVU7Z/v8MXm4Sc+6aw=="],
+    "@routecraft/eslint-plugin-routecraft": ["@routecraft/eslint-plugin-routecraft@0.7.0-canary-20260829135343", "", { "peerDependencies": { "eslint": ">=9" } }, "sha512-h78pvWIrjSuduXiDFJjx1fZMhLUM/a9xe8OxR01ogQJ0RA8qd+Of/C1WzctyzmrDse1ehzmECSDXfia+AhQ1tg=="],
 
-    "@routecraft/os": ["@routecraft/os@0.7.0-canary-20260825180314", "", { "peerDependencies": { "@routecraft/routecraft": "0.7.0-canary-20260825180314", "agent-browser": "^0.17.1", "execa": "^9.6.0", "shescape": "^3.0.2" }, "optionalPeers": ["agent-browser", "execa", "shescape"] }, "sha512-Rfwgcl0KVdlnAGmHaL5OaChGwlaSX756iQ+aZdt0FTIspfZFLlhVEyewGsfYS7XlFXhyftLJJp0LWlFkbdIBwg=="],
+    "@routecraft/os": ["@routecraft/os@0.7.0-canary-20260828101012", "", { "peerDependencies": { "@routecraft/routecraft": "0.7.0-canary-20260828101012", "agent-browser": "^0.17.1", "execa": "^9.6.0", "shescape": "^3.0.2" }, "optionalPeers": ["agent-browser", "execa", "shescape"] }, "sha512-8wWnuhUowETXS4Bq5gC7HhVLlse+GjZnszaW97AAv7lWF8bkYckrBcXOViD1WC1vbtXFwzfsUk3EFB3No2jGAA=="],
 
-    "@routecraft/routecraft": ["@routecraft/routecraft@0.7.0-canary-20260826174745", "", { "dependencies": { "@opentelemetry/api": "^1.9.1", "@standard-schema/spec": "^1.1.0", "lru-cache": "^11.5.2", "pino": "^10.3.1" }, "optionalDependencies": { "pino-pretty": "^13.1.3" }, "peerDependencies": { "@opentelemetry/sdk-trace-base": "^2.6.0", "better-sqlite3": "^11.0.0", "cheerio": "^1.2.0", "croner": "^10.0.1", "fast-xml-parser": "^5.10.1", "imapflow": "^1.0.0", "jose": "^6.0.0", "mailauth": "^4.0.0", "mailparser": "^3.7.0", "nodemailer": "^6.0.0", "papaparse": "^5.4.1", "tsdav": "^2.1.0" }, "optionalPeers": ["@opentelemetry/sdk-trace-base", "better-sqlite3", "cheerio", "croner", "fast-xml-parser", "imapflow", "jose", "mailauth", "mailparser", "nodemailer", "papaparse", "tsdav"] }, "sha512-wwYacwgi9f1BS0RcYe3OiNDGaAScpx1+77ZR9W34R7j/lk4bQhWWO9QUYN2kA5CvwE1NY+Qga490YD8AU9yW0A=="],
+    "@routecraft/routecraft": ["@routecraft/routecraft@0.7.0-canary-20260829135343", "", { "dependencies": { "@opentelemetry/api": "^1.9.1", "@standard-schema/spec": "^1.1.0", "lru-cache": "^11.5.2", "pino": "^10.3.1" }, "optionalDependencies": { "pino-pretty": "^13.1.3" }, "peerDependencies": { "@opentelemetry/sdk-trace-base": "^2.6.0", "better-sqlite3": "^11.0.0", "cheerio": "^1.2.0", "croner": "^10.0.1", "fast-xml-parser": "^5.10.1", "imapflow": "^1.0.0", "jose": "^6.0.0", "mailauth": "^4.0.0", "mailparser": "^3.7.0", "nodemailer": "^6.0.0", "papaparse": "^5.4.1", "tsdav": "^2.1.0" }, "optionalPeers": ["@opentelemetry/sdk-trace-base", "better-sqlite3", "cheerio", "croner", "fast-xml-parser", "imapflow", "jose", "mailauth", "mailparser", "nodemailer", "papaparse", "tsdav"] }, "sha512-bYfjG4AiWCgm9qu0wyCAOYEIlRLtub6bF9kWSyooGAr4MCLU0IClFJOENgTyzOSP/UUVu47x6AEPr5FKyiuatg=="],
 
-    "@routecraft/testing": ["@routecraft/testing@0.7.0-canary-20260826174745", "", { "dependencies": { "@standard-schema/spec": "^1.1.0" }, "peerDependencies": { "@routecraft/routecraft": "0.7.0-canary-20260826174745" } }, "sha512-K9jJf6557KgOMfilfPnkBLVt+ZBfGuaCvvpK3kSPurCola2ETOoCWOSckWkURaO/DWu3fti2+gKwy6cE8oeXug=="],
+    "@routecraft/testing": ["@routecraft/testing@0.7.0-canary-20260829135343", "", { "dependencies": { "@standard-schema/spec": "^1.1.0" }, "peerDependencies": { "@routecraft/routecraft": "0.7.0-canary-20260829135343" } }, "sha512-RekdG2MtV5NlGMhtB+00fO7JHZbwCU+aDXwXPJ3CgyX0QRZ5WevpH1i1nwOZq6E6+ZRmrykDLXPb49B/ZQrX/g=="],
 
     "@sec-ant/readable-stream": ["@sec-ant/readable-stream@0.4.1", "", {}, "sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg=="],
 
@@ -178,7 +178,7 @@
 
     "@wdio/utils": ["@wdio/utils@9.31.2", "", { "dependencies": { "@puppeteer/browsers": "^2.2.0", "@wdio/logger": "9.29.1", "@wdio/types": "9.31.2", "decamelize": "^6.0.0", "deepmerge-ts": "^7.0.3", "edgedriver": "^6.1.2", "geckodriver": "^6.1.1", "get-port": "^7.0.0", "import-meta-resolve": "^4.0.0", "locate-app": "^2.2.24", "mitt": "^3.0.1", "safaridriver": "^1.0.0", "split2": "^4.2.0", "wait-port": "^1.1.0" } }, "sha512-3JqQfr6yEphrlxkQO9eWvURaL2LGdoMxTChvayGOIDhF1H3d+7E7QOc2i3rnhJIHolFisGsgMuP2uefa/UZKYQ=="],
 
-    "@zip.js/zip.js": ["@zip.js/zip.js@2.8.60", "", {}, "sha512-pULv0waMlnKAUUxrsuAOa0ADONGRuhdHORtuXVgClNlScDB5YjImCV8DZrE1SicaROyE6MwGkH8CLJ+o4Nx07g=="],
+    "@zip.js/zip.js": ["@zip.js/zip.js@2.8.61", "", {}, "sha512-F9RnQJXgvCSdAJfMtSrH5Uh/LcLg8fZlg5ARC4u5N4w9v/DG27cN3C/ngUrY1JdJGX2LRv5DDViXeZJgbcppWA=="],
 
     "@zone-eu/mailsplit": ["@zone-eu/mailsplit@5.4.15", "", { "dependencies": { "libbase64": "1.3.0", "libmime": "5.4.2", "libqp": "2.1.1" } }, "sha512-c7ZpxauvF4AEkDJlKDYO7iMUtMuqJMBnDWNff1cyx+d7zaBVR3iFEmXhNHOVoMmVyVF3pTZLsLIJsEFKDldOAA=="],
 
@@ -342,7 +342,7 @@
 
     "environment": ["environment@1.1.0", "", {}, "sha512-xUtoPkMggbz0MPyPiIWr1Kp4aeWJjDZ6SMvURhimjdZgsRuDplF5/s9hcgGhyXMhs+6vpnuoiZ2kFiu3FMnS8Q=="],
 
-    "es-toolkit": ["es-toolkit@1.51.0", "", {}, "sha512-zC2lQGkM7QX+Gm6iM3+WIdZJzthsEd14LvRNJneSO2hzyz/zNBENR8+YXWo1cKxgPBtV6ksPYHELbcwBRzmdCw=="],
+    "es-toolkit": ["es-toolkit@1.52.0", "", {}, "sha512-XTNEJQh1tY1ZJVcf6ayP/2n4ZPyaHlW2FWs7xvw5ddPuhUVjLD3olQVQS7kf58JbAB48iL0uL/jerTrjtV3lDA=="],
 
     "escalade": ["escalade@3.2.0", "", {}, "sha512-WUj2qlxaQtO4g6Pq5c29GTcWGDyd8itL8zTlipgECz3JesAiiOKotd8JU6otB3PACgG6xkJUyVhboMS+bje/jA=="],
 
@@ -470,7 +470,7 @@
 
     "ink": ["ink@5.2.1", "", { "dependencies": { "@alcalzone/ansi-tokenize": "^0.1.3", "ansi-escapes": "^7.0.0", "ansi-styles": "^6.2.1", "auto-bind": "^5.0.1", "chalk": "^5.3.0", "cli-boxes": "^3.0.0", "cli-cursor": "^4.0.0", "cli-truncate": "^4.0.0", "code-excerpt": "^4.0.0", "es-toolkit": "^1.22.0", "indent-string": "^5.0.0", "is-in-ci": "^1.0.0", "patch-console": "^2.0.0", "react-reconciler": "^0.29.0", "scheduler": "^0.23.0", "signal-exit": "^3.0.7", "slice-ansi": "^7.1.0", "stack-utils": "^2.0.6", "string-width": "^7.2.0", "type-fest": "^4.27.0", "widest-line": "^5.0.0", "wrap-ansi": "^9.0.0", "ws": "^8.18.0", "yoga-layout": "~3.2.1" }, "peerDependencies": { "@types/react": ">=18.0.0", "react": ">=18.0.0", "react-devtools-core": "^4.19.1" }, "optionalPeers": ["@types/react", "react-devtools-core"] }, "sha512-BqcUyWrG9zq5HIwW6JcfFHsIYebJkWWb4fczNah1goUO0vv5vneIlfwuS85twyJ5hYR/y18FlAYUxrO9ChIWVg=="],
 
-    "ip-address": ["ip-address@10.5.0", "", {}, "sha512-R5SnVLJmgYYvf2F2ZgwSBnelz5G4q5AxIC277GDfUaNbrZKNANcBC7RHqYYePlszf4kBolVkJauG0ZjHHFh55g=="],
+    "ip-address": ["ip-address@10.7.0", "", {}, "sha512-BGFsyJd5mpXp3rK6jIdADLNgpJUK1jnjzvYF8lK+VyDab9JAmqN0YOKDdP17HlgKb2+ehPgDc8EtnRLbGCAMhA=="],
 
     "is-extglob": ["is-extglob@2.1.1", "", {}, "sha512-SbKbANkN603Vi4jEZv49LeVJMn4yGwsbzZworEoyEiutsN3nJYdbO36zfhGJ6QEDpOZIFkDtnq5JRxmvl3jsoQ=="],
 
@@ -640,7 +640,7 @@
 
     "prettier": ["prettier@3.9.6", "", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g=="],
 
-    "pretty-ms": ["pretty-ms@9.3.0", "", { "dependencies": { "parse-ms": "^4.0.0" } }, "sha512-gjVS5hOP+M3wMm5nmNOucbIrqudzs9v/57bWRHQWLYklXqoXKrVfYW2W9+glfGsqtPgpiz5WwyEEB+ksXIx3gQ=="],
+    "pretty-ms": ["pretty-ms@9.3.1", "", { "dependencies": { "parse-ms": "^4.0.0" } }, "sha512-HzMy3Geq23nVALD/M2LliU+F+M+gVNsvkQWWqeBZ8HDiCgzo6YPJ/Omrmtq24EFrIsk0a3EkQGEd7bDOo+IhGA=="],
 
     "process": ["process@0.11.10", "", {}, "sha512-cdGef/drWFoydD1JsMzuFf8100nZl+GT+yacc2bEced5f9Rjk4z+WtFUTBu9PhOi9j/jfmBPu0mMEY4wIdAF8A=="],
 
@@ -858,7 +858,7 @@
 
     "zip-stream": ["zip-stream@6.0.1", "", { "dependencies": { "archiver-utils": "^5.0.0", "compress-commons": "^6.0.2", "readable-stream": "^4.0.0" } }, "sha512-zK7YHHz4ZXpW89AHXUPbQVGKI7uvkd3hzusTdotCg1UxyaVtg0zFJSTfW/Dq5f7OBBVnq6cZIaC8Ti4hb6dtCA=="],
 
-    "zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
+    "zod": ["zod@4.5.2", "", {}, "sha512-XkYXCol10+ba/6F/cueWV+TezUeOqXW0hdeJt5CdXjTYeAgAQg5N03RQdJ80mhfFE72+pblvYMW4wy2Qp4Qbrg=="],
 
     "@ai-sdk/provider-utils/undici": ["undici@6.28.0", "", {}, "sha512-LIY910g9TI13YS95lrMFrs8Rm/u/irgHeTWoKCoteeJ04CUJ92eEfj0rVn+7VKMPBpUPiUoBKfhNyLI23EE/KA=="],
 

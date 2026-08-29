@@ -13,6 +13,19 @@ import {
  * parks at `.suspend()`, and everything after that line runs when someone
  * answers, possibly days later and certainly in a different process.
  *
+ * ## Why it is internal
+ *
+ * It exists to be called by `request-approval` and by nothing else. It
+ * carries no `.authorize()` because its caller does, and its answer to a
+ * direct caller is the framework's suspension acknowledgment rather than
+ * anything a person or a model could use. `direct({ internal: true })` says
+ * that out loud: the in-process endpoint stays, so `request-approval` calls
+ * it exactly as before, and both external doors close. It is absent from
+ * `craft exec`, refused by name if someone tries, absent from the agent tool
+ * surface, and shows in the ops listing as `dispatchable: false`, which is
+ * the difference between a route that is off and a route that is not yours
+ * to call.
+ *
  * ## Why the scope check is here and not in the resume hook
  *
  * `.suspend({ meta })` takes a value, not a function of the exchange, so
@@ -34,7 +47,7 @@ export default craft()
   .id("approval-park")
   .description("Hold a request until a human approves or denies it.")
   .input({ body: ApprovalRequest })
-  .from<ApprovalRequest>(direct())
+  .from<ApprovalRequest>(direct({ internal: true }))
   .suspend({
     schema: ApprovalDecision,
     // Short because the link is a bearer credential. A request nobody

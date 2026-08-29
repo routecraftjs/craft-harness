@@ -14,14 +14,15 @@
     "test": "bun test",
     "boot-check": "NODE_ENV=development craft start --once --timeout 60000",
     "all": "bun run format:write && bun run typecheck && bun run lint && bun run test",
-    "dev": "NODE_ENV=development craft start"
+    "dev": "NODE_ENV=development craft start",
+    "setup": "bun run scripts/setup.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.50",
     "@modelcontextprotocol/server": "^2.0.0",
-    "@routecraft/ai": "0.7.0-canary-20260826174745",
-    "@routecraft/os": "0.7.0-canary-20260825180314",
-    "@routecraft/routecraft": "0.7.0-canary-20260826174745",
+    "@routecraft/ai": "0.7.0-canary-20260829135343",
+    "@routecraft/os": "0.7.0-canary-20260828101012",
+    "@routecraft/routecraft": "0.7.0-canary-20260829135343",
     "ai": "^6.0.0",
     "croner": "^10.0.1",
     "yaml": "^2.8.0",
@@ -29,9 +30,9 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@routecraft/cli": "0.7.0-canary-20260826174745",
-    "@routecraft/eslint-plugin-routecraft": "0.7.0-canary-20260826174745",
-    "@routecraft/testing": "0.7.0-canary-20260826174745",
+    "@routecraft/cli": "0.7.0-canary-20260829135343",
+    "@routecraft/eslint-plugin-routecraft": "0.7.0-canary-20260829135343",
+    "@routecraft/testing": "0.7.0-canary-20260829135343",
     "@types/node": "^25.3.5",
     "bun-types": "^1.1.0",
     "eslint": "^10.0.2",

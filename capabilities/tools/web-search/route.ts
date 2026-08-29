@@ -72,10 +72,10 @@ export default craft()
   .description("Search the web and return ranked results with snippets.")
   .input({ body: WebSearchInput })
   .throttle({ rate: 10, per: "minute" })
-  .retry({ maxAttempts: 3, backoffMs: 500, factor: 2 })
-  .timeout(20_000)
+  .retry({ maxAttempts: 3, backoff: "500ms", factor: 2 })
+  .timeout("20s")
   .cache({
-    ttl: 300_000,
+    ttl: "5m",
     key: (exchange) => {
       const body = exchange.body as WebSearchInput;
       return `${body.query}\n${body.count}`;
@@ -97,7 +97,7 @@ export default craft()
         // key a model could be talked into passing somewhere else.
         "X-Subscription-Token": env.BRAVE_SEARCH_API_KEY,
       },
-      timeoutMs: 15_000,
+      timeout: "15s",
     }),
     only((response: { body: unknown }) => response.body, "raw"),
   )

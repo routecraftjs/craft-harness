@@ -7,17 +7,18 @@ import {
   mail,
   only,
 } from "@routecraft/routecraft";
-import { env, mailConfigured } from "../../../env.js";
+import { env, mailEnabled } from "../../../env.js";
 import type { ChatInput, ChatReply } from "../../chat/chat/route.js";
 import type { MailReplyInput } from "../mail-reply/route.js";
 
 /**
  * Read the mailbox and answer what arrives.
  *
- * Dormant until a mailbox is configured, for the same reason and by the same
- * mechanism as `mail-reply`: with no `MAIL_ADDRESS` and `MAIL_APP_PASSWORD`
- * this module exports no routes, so no IMAP connection is ever opened and
- * the harness boots and passes CI with no secrets anywhere.
+ * Dormant until a mailbox is configured, by the same mechanism as
+ * `mail-reply`: `.enabled()` leaves it registered and off, so no IMAP
+ * connection is opened, the harness boots and passes CI with no secrets, and
+ * `/ops` says which variables are missing rather than leaving an operator to
+ * work out whether the route was ever written.
  *
  * Each correspondent gets their own conversation, keyed by address, so the
  * agent remembers someone between mails rather than meeting them fresh each
@@ -36,9 +37,10 @@ function sessionFor(address: string): string {
   return address.replace(/[^A-Za-z0-9._-]+/g, "-").slice(0, 64) || "mail";
 }
 
-const mailInbox = craft()
+export default craft()
   .id("mail-inbox")
   .description("Answer mail that arrives in the configured mailbox.")
+  .enabled(mailEnabled)
   .from(mail(env.MAIL_FOLDER, { markSeen: true }))
   .transform((body: MailBody, exchange): ChatInput & { replyTo: string } => {
     const from = exchange.headers[MailHeaders.FROM] ?? "";
@@ -60,5 +62,3 @@ const mailInbox = craft()
   }))
   .enrich(direct("mail-reply"))
   .to(log());
-
-export default mailConfigured ? [mailInbox] : [];

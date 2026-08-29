@@ -70,7 +70,7 @@ export default craft()
         // timeout once per call site, so a model-supplied one would have to
         // be threaded through an option that does not accept a function,
         // and a model that can raise its own deadline has no deadline.
-        timeout: 60_000,
+        timeout: "60s",
       },
     ),
   );

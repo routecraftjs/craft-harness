@@ -99,10 +99,10 @@ export default craft()
   // A model asking in a loop is the failure mode here, so the rate limit
   // paces rather than rejects: the agent waits instead of learning to retry.
   .throttle({ rate: 10, per: "minute" })
-  .retry({ maxAttempts: 3, backoffMs: 500, factor: 2 })
-  .timeout(30_000)
+  .retry({ maxAttempts: 3, backoff: "500ms", factor: 2 })
+  .timeout("30s")
   .cache({
-    ttl: 300_000,
+    ttl: "5m",
     // Typed at the call site: route-scope wrappers are declared before
     // `.from()`, so the builder has no body type to infer from yet.
     key: (exchange) => {
@@ -116,7 +116,7 @@ export default craft()
       url: (exchange: { body: WebFetchInput }) => exchange.body.url,
       redirect: "manual",
       maxBodySize: 4_000_000,
-      timeoutMs: 15_000,
+      timeout: "15s",
     }),
     only(
       (response: {
@@ -149,7 +149,7 @@ export default craft()
               // being followed, so the allowlist covers every request made.
               redirect: "error",
               maxBodySize: 4_000_000,
-              timeoutMs: 15_000,
+              timeout: "15s",
             }),
             only(
               (response: {

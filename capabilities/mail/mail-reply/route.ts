@@ -1,20 +1,22 @@
 import { craft, direct, mail } from "@routecraft/routecraft";
 import { z } from "zod";
-import { env, mailConfigured } from "../../../env.js";
+import { env, mailEnabled } from "../../../env.js";
 
 /**
  * Send a mail.
  *
- * Dormant until a mailbox is configured. `MAIL_ADDRESS` and
- * `MAIL_APP_PASSWORD` are the two values that decide it, and until both are
- * set this module exports no routes at all: the adapter is never
- * constructed, nothing connects, and the harness boots and passes CI with
- * no secrets anywhere.
+ * Dormant until a mailbox is configured, and dormant in a way an operator
+ * can see. `.enabled()` leaves the route registered and off: not started,
+ * not connected, absent from the agent's tools, and reported by `/ops` as
+ * disabled with the reason the predicate returned.
  *
- * That is conditional construction rather than a runtime flag on purpose.
- * A route that exists and refuses is a route in the registry, in the ops
- * listing, and in the agent's tool surface, all describing something that
- * cannot work.
+ * The reason is the return value rather than a second argument, so the
+ * sentence an operator reads always names the variables actually missing
+ * instead of one somebody wrote once and stopped maintaining.
+ *
+ * That distinction is the whole point of the state. A route that is simply
+ * absent looks the same as one that was never written, and only one of
+ * those is a configuration a person can fix.
  */
 
 export const MailReplyInput = z.object({
@@ -30,9 +32,10 @@ export const MailReplyInput = z.object({
 });
 export type MailReplyInput = z.infer<typeof MailReplyInput>;
 
-const mailReply = craft()
+export default craft()
   .id("mail-reply")
   .description("Send an email.")
+  .enabled(mailEnabled)
   .input({ body: MailReplyInput })
   .from<MailReplyInput>(direct())
   .transform((body) => ({
@@ -44,5 +47,3 @@ const mailReply = craft()
   }))
   .tap(mail())
   .transform((payload) => ({ to: payload.to, sent: true }));
-
-export default mailConfigured ? [mailReply] : [];

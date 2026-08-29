@@ -65,7 +65,7 @@ export default craft()
   .id("compact")
   .description("Shorten a conversation transcript, keeping what matters.")
   .input({ body: CompactInput })
-  .timeout(120_000)
+  .timeout("2m")
   .from<CompactInput>(direct())
   .header(SESSION_HEADER, (exchange) => exchange.body.session)
   .error((_error, exchange) => ({
