@@ -1,6 +1,7 @@
 import { craft, direct, jsonl, only } from "@routecraft/routecraft";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { emptyWhenMissing } from "../../../shared/recover.js";
 import {
   SCHEDULES_FILE,
   type ScheduledTask,
@@ -56,10 +57,7 @@ export default craft()
   // No schedules file yet is an empty schedule, not a failure. The recovery
   // restores the input shape so the merge below reads the same body either
   // way; returning a bare array would drop the request.
-  .error((_error, exchange) => ({
-    ...(exchange.body as ScheduleTaskInput),
-    lines: [] as unknown[],
-  }))
+  .error(emptyWhenMissing)
   .enrich(
     jsonl({ path: SCHEDULES_FILE }),
     only((lines: unknown[]) => lines, "lines"),

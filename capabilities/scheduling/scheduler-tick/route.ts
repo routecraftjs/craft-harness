@@ -1,6 +1,7 @@
 import { craft, cron, jsonl, log } from "@routecraft/routecraft";
 import { direct } from "@routecraft/routecraft";
 import { env } from "../../../env.js";
+import { noLinesWhenMissing } from "../../../shared/recover.js";
 import type { ChatInput } from "../../chat/chat/route.js";
 import {
   SCHEDULES_FILE,
@@ -35,8 +36,9 @@ export default craft()
   .description("Fire scheduled tasks that have come due.")
   .from(cron(env.SCHEDULER_CRON))
   // No schedules file yet is an empty schedule, not a failure. This is the
-  // path a fresh scaffold takes on every tick.
-  .error(() => [] as unknown[])
+  // path a fresh scaffold takes on every tick. Any other read failure is
+  // declined: the write below replaces the file with what survived the tick.
+  .error(noLinesWhenMissing)
   // A bare enrich, not `only()`: a cron exchange has no body to merge into,
   // so the lines replace it and the transform below reads them directly.
   .enrich(jsonl({ path: SCHEDULES_FILE }))

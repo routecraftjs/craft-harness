@@ -183,8 +183,18 @@ works teaches everyone to trust a boundary that is not one. The tier is the
 boundary.
 
 What the tier does not do is stop the script reading files the account running
-the harness can read: `~/.ssh` and `.env` are in the same filesystem view. Run
-this as a user whose files you are willing to let a model read.
+the harness can read. `.env` is in the same filesystem view, and it holds
+`CRAFT_API_KEY`, which is the credential walling every surface this harness
+exposes, and `ROUTECRAFT_SUSPENSION_SECRET`, which signs approval links.
+`~/.ssh` is in there too. `network: false` does not contain what the shell
+reads, because the shell is not the turn's only way out: the same agent holds
+`web-fetch`, `mail-reply` and its own reply. Treat a command reaching this
+tier as able to reach anything the account can read, and anything it reads as
+able to leave.
+
+Run this as a user whose files you are willing to let a model read, and keep
+the harness's own secrets somewhere that account cannot: a container whose
+only bind mount is `workspace/` is the shape that actually closes this.
 
 ### macOS
 

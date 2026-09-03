@@ -1,6 +1,7 @@
 import { llm } from "@routecraft/ai";
 import { craft, direct, jsonl, only } from "@routecraft/routecraft";
 import { z } from "zod";
+import { emptyWhenMissing } from "../../../shared/recover.js";
 import { modelId } from "../../../env.js";
 import {
   SESSION_HEADER,
@@ -68,10 +69,7 @@ export default craft()
   .timeout("2m")
   .from<CompactInput>(direct())
   .header(SESSION_HEADER, (exchange) => exchange.body.session)
-  .error((_error, exchange) => ({
-    ...(exchange.body as CompactInput),
-    lines: [] as unknown[],
-  }))
+  .error(emptyWhenMissing)
   .enrich(
     jsonl({ path: transcriptFileOf }),
     only((lines: unknown[]) => lines, "lines"),

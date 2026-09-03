@@ -15,9 +15,16 @@ import { z } from "zod";
  *
  * What the tier gives: no network egress, no view of host processes, none of
  * the caller's privileges. What it does NOT give: protection from reading
- * files the calling user can read. `~/.ssh` and `.env` are inside the same
- * filesystem view, so run the harness as a user whose files you are willing
- * to let a model read.
+ * files the calling user can read. `.env` is inside the same filesystem
+ * view, and it carries `CRAFT_API_KEY` and `ROUTECRAFT_SUSPENSION_SECRET`,
+ * so the shell can read the credential that walls every surface and the key
+ * that signs approval links.
+ *
+ * `network: false` does not contain that. The shell is not the only egress
+ * in a turn: the same agent holds `web-fetch`, `mail-reply` and its own
+ * reply, so anything the shell reads can leave by another route. Closing it
+ * needs the secrets out of the account's filesystem view, which is a
+ * container with only `workspace/` bind-mounted rather than an option here.
  *
  * ## macOS, stated rather than degraded
  *

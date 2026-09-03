@@ -1,4 +1,5 @@
 import { craft, http } from "@routecraft/routecraft";
+import { OPERATOR_SUBJECT } from "../../../craft.config.js";
 import { isKnownApprover } from "../../../shared/approval.js";
 
 /**
@@ -56,6 +57,8 @@ export default craft()
       // validator on the mount and this same line starts demanding that the
       // verified subject be a configured approver.
       authorize: ({ principal }) =>
-        principal === undefined || isKnownApprover(principal.subject),
+        principal === undefined ||
+        principal.subject === OPERATOR_SUBJECT ||
+        isKnownApprover(principal.subject),
     },
   );

@@ -1,6 +1,7 @@
 import { type AgentResult, agent } from "@routecraft/ai";
 import { craft, direct, jsonl, only } from "@routecraft/routecraft";
 import { z } from "zod";
+import { emptyWhenMissing } from "../../../shared/recover.js";
 import {
   SESSION_HEADER,
   SessionId,
@@ -32,6 +33,9 @@ import {
  * conversation while the header carries which conversation it is, which is
  * what lets the file path stay resolvable across the three body rewrites.
  *
+ * The agent's own definition, its system prompt, tools and skills, is
+ * `agents/aria.md`; the body reaching `agent("aria")` is its user message.
+ *
  * @example
  * ```bash
  * craft exec chat --session=demo --message="what can you do?"
@@ -59,13 +63,8 @@ export default craft()
   .input({ body: ChatInput })
   .from<ChatInput>(direct())
   .header(SESSION_HEADER, (exchange) => exchange.body.session)
-  // A session with no file yet is a new conversation, not a failure. The
-  // recovery restores the input shape so the next step reads the same body
-  // either way.
-  .error((_error, exchange) => ({
-    ...(exchange.body as ChatInput),
-    lines: [] as unknown[],
-  }))
+  // A session with no file yet is a new conversation, not a failure.
+  .error(emptyWhenMissing)
   .enrich(
     jsonl({ path: transcriptFileOf }),
     only((lines: unknown[]) => lines, "lines"),
@@ -74,15 +73,10 @@ export default craft()
     ...parseTurns(body.lines),
     turn("user", body.message),
   ])
-  // Rewrites the file with the question in it. The body is the whole
-  // conversation, so this is an overwrite rather than an append: it cannot
-  // duplicate a turn if the same message is retried.
   .tap(jsonl({ path: transcriptFileOf, createDirs: true }))
   .transform((turns) =>
     renderPrompt(turns.slice(0, -1), turns[turns.length - 1]?.text ?? ""),
   )
-  // The prompt IS the body here, which is what the agent sends as its user
-  // message. Its system prompt, tools and skills come from `agents/aria.md`.
   .enrich(agent("aria"))
   .transform((result: AgentResult) => turn("assistant", result.text))
   .tap(jsonl({ path: transcriptFileOf, append: true, createDirs: true }))

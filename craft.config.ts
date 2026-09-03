@@ -41,6 +41,15 @@ import { env, mailConfigured, modelId } from "./env.js";
  * route changes, because a route says what it needs (`.authorize()`) and
  * never how a credential is checked.
  */
+/**
+ * The subject every principal minted from `CRAFT_API_KEY` carries.
+ *
+ * Exported because the approvals hook has to recognise it: the operator
+ * holding the instance's own key is the one caller who would otherwise
+ * authenticate successfully and then be refused as an unknown approver.
+ */
+export const OPERATOR_SUBJECT = "operator";
+
 const apiKeyAuth = {
   validator: (token: string): Principal => {
     if (!timingSafeStringEqual(env.CRAFT_API_KEY, token)) {
@@ -49,7 +58,7 @@ const apiKeyAuth = {
     return {
       kind: "custom",
       scheme: "bearer",
-      subject: "operator",
+      subject: OPERATOR_SUBJECT,
       scopes: ["ops:introspection", "ops:dispatch"],
     };
   },

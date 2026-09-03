@@ -1,4 +1,4 @@
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 
 /**
  * The four directories the harness writes to, and the containment rule that
@@ -55,9 +55,3 @@ export function resolveWithin(
 
 /** The single file every scheduled task is appended to, one task per line. */
 export const SCHEDULES_FILE = join(STATE_ROOT, "schedules.jsonl");
-
-/** Display form of a path, relative to the project root. */
-export function displayPath(absolute: string): string {
-  const rel = relative(resolve("."), absolute);
-  return rel.startsWith("..") ? absolute : rel.split(sep).join("/");
-}

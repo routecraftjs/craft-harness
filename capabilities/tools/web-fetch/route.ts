@@ -1,5 +1,13 @@
 import { type LlmResult, llm } from "@routecraft/ai";
-import { craft, direct, http, only, when } from "@routecraft/routecraft";
+import {
+  craft,
+  direct,
+  http,
+  isRedirect,
+  only,
+  when,
+  type HttpResult,
+} from "@routecraft/routecraft";
 import { z } from "zod";
 import { env, modelId } from "../../../env.js";
 
@@ -92,6 +100,31 @@ const ANSWER_SYSTEM = [
   "If the page does not answer it, say so plainly instead of guessing.",
 ].join(" ");
 
+/** Where the resolved redirect target rides between the filter and the hop. */
+const REDIRECT_HEADER = "harness.fetch.redirect";
+
+/**
+ * The absolute URL a `Location` header names.
+ *
+ * `Location` is allowed to be relative, and documentation sites emit one on
+ * every trailing-slash canonicalisation. Resolving it against the URL that
+ * was requested is what makes the allowlist check apply to the request that
+ * will actually be made, rather than refusing a same-host hop because a bare
+ * `/en/docs` does not parse on its own.
+ */
+function resolveLocation(
+  response: HttpResult,
+  requested: string,
+): string | undefined {
+  const raw = response.headers["location"];
+  if (typeof raw !== "string") return undefined;
+  try {
+    return new URL(raw, requested).href;
+  } catch {
+    return undefined;
+  }
+}
+
 export default craft()
   .id("web-fetch")
   .description("Read one web page and answer a question about it.")
@@ -118,47 +151,33 @@ export default craft()
       maxBodySize: 4_000_000,
       timeout: "15s",
     }),
-    only(
-      (response: {
-        status: number;
-        headers: Record<string, string>;
-        body: unknown;
-      }) => response,
-      "response",
-    ),
+    only((response: HttpResult) => response, "response"),
   )
   .choice(
     when(
-      (exchange) =>
-        exchange.body.response.status >= 300 &&
-        exchange.body.response.status < 400,
+      (exchange) => isRedirect(exchange.body.response),
       (branch) =>
         branch
+          .header(REDIRECT_HEADER, (exchange) =>
+            resolveLocation(exchange.body.response, exchange.body.url),
+          )
           .filter((exchange) => {
-            const next = exchange.body.response.headers["location"];
+            const next = exchange.headers[REDIRECT_HEADER];
             return typeof next === "string" && isAllowed(next)
               ? true
               : { reason: "redirect left the allowlist" };
           })
           .enrich(
             http({
-              url: (exchange: {
-                body: { response: { headers: Record<string, string> } };
-              }) => exchange.body.response.headers["location"] ?? "",
+              url: (exchange) =>
+                String(exchange.headers[REDIRECT_HEADER] ?? ""),
               // The second hop is the last one. A 3xx here fails rather than
               // being followed, so the allowlist covers every request made.
               redirect: "error",
               maxBodySize: 4_000_000,
               timeout: "15s",
             }),
-            only(
-              (response: {
-                status: number;
-                headers: Record<string, string>;
-                body: unknown;
-              }) => response,
-              "response",
-            ),
+            only((response: HttpResult) => response, "response"),
           ),
     ),
   )
