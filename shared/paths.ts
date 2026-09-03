@@ -53,13 +53,8 @@ export function resolveWithin(
   return absolute;
 }
 
-/** The path a session's chat transcript lives at. */
-export function transcriptPath(session: string): string | undefined {
-  return resolveWithin(STATE_ROOT, join("transcripts", `${session}.json`));
-}
-
-/** The single file every scheduled task is appended to. */
-export const SCHEDULES_FILE = join(STATE_ROOT, "schedules.json");
+/** The single file every scheduled task is appended to, one task per line. */
+export const SCHEDULES_FILE = join(STATE_ROOT, "schedules.jsonl");
 
 /** Display form of a path, relative to the project root. */
 export function displayPath(absolute: string): string {
