@@ -295,6 +295,24 @@ saying so. Folding an unrecognised verdict to `deny` would render a working
 deny button for a link the system never issued, so a mangled URL would record
 a denial nobody made.
 
+An answer that cannot land gets the same treatment. A link opened after the
+TTL, or one already spent, or one the resume hook refuses, all reach a 400 and
+one sentence: nothing changed, ask for a new link. They are deliberately not
+told apart, because the difference is the record's lifecycle and this mount
+demands no credential. Without that arm the resume throws and the dispatcher
+answers `{"error":"internal server error"}`, which is what an approver reading
+their mail an hour late would otherwise see. The confirmation page says up
+front how long the link lives, so the wait is a known one.
+
+Both doors throttle per token rather than per route. A single bucket for the
+whole route would let any anonymous caller spend the minute on tokens nobody
+minted and have every genuine approver rejected, which is an approval gate
+held shut by a stranger for the cost of one request every two seconds.
+
+The pages carry `Cache-Control: no-store` and `Referrer-Policy: no-referrer`.
+The URL they are fetched at contains the token, and the token is a bearer
+credential, so it has no business in a shared cache or in a `Referer`.
+
 `approval-park` is declared `direct({ internal: true })`, and it is the one
 route here that is. It exists to be called by `request-approval` and by
 nothing else: it carries no `.authorize()` because its caller does, and its

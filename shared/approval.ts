@@ -84,97 +84,40 @@ export function decisionLinks(token: string): {
   };
 }
 
-/** The two verdicts a decision link can carry. */
-export type Decision = "approve" | "deny";
+/**
+ * How long a decision link lives.
+ *
+ * Two spellings of one window: `duration` is what `.suspend()` parses, `human`
+ * is what the confirmation page tells the approver. Short because the link is
+ * a bearer credential, and a request nobody answers within half an hour is
+ * better re-asked than left live.
+ */
+export const APPROVAL_TTL = { duration: "30m", human: "30 minutes" } as const;
+
+/** The verdicts a decision link can carry. */
+export const DECISIONS = ["approve", "deny"] as const;
+export type Decision = (typeof DECISIONS)[number];
 
 /** Whether a URL segment is a verdict this harness minted. */
 export function isDecision(value: string): value is Decision {
-  return value === "approve" || value === "deny";
+  return (DECISIONS as readonly string[]).includes(value);
 }
 
 /**
- * The confirmation page a decision link opens.
+ * The verdict a decision segment stands for, in the shape the parked route
+ * reads.
  *
- * Deliberately plain: no script, no external asset, no styling worth the
- * name. A form post is the one act in this flow a link prefetcher does not
- * perform, and everything beyond that is a byte the approver has to trust.
- *
- * The form action is empty, so the POST goes to the document's own URL: the
- * exact path the GET arrived on, token and all. Rebuilding an absolute path
- * would root it at the origin and 404 behind a proxy mounting the harness
- * under a prefix, which `APPROVAL_BASE_URL` is free to name. It also means the
- * token never reaches the markup.
- *
- * It cannot show the request itself. Reading a parked exchange by token needs
- * `suspensionIdFor` and the configured store, and the framework exports
- * neither to a route, so the page names the verdict and not the question. See
- * the README on what an approver therefore has to carry from the mail.
+ * A switch with no default, so widening {@link DECISIONS} is a compile error
+ * here rather than a third verdict silently recorded as a refusal against a
+ * token that cannot be answered twice.
  *
  * @param decision The verdict the link carried, already validated
  */
-export function confirmPage(decision: Decision): string {
-  return [
-    "<!doctype html>",
-    '<html lang="en"><head><meta charset="utf-8">',
-    "<title>Confirm your decision</title></head><body>",
-    `<h1>Confirm: ${escapeHtml(decision)}</h1>`,
-    "<p>Your answer is not recorded until you confirm. Nothing has happened yet.</p>",
-    '<form method="post" action="">',
-    `<button type="submit">Confirm ${escapeHtml(decision)}</button>`,
-    "</form>",
-    "</body></html>",
-  ].join("\n");
-}
-
-/** Escape text for interpolation into HTML. Both page inputs come from a URL. */
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-/** What a link this harness never issued gets instead of a decision button. */
-export function refusalPage(): string {
-  return [
-    "<!doctype html>",
-    '<html lang="en"><head><meta charset="utf-8">',
-    "<title>Not a valid link</title></head><body>",
-    "<h1>This link is not one we issued</h1>",
-    "<p>Nothing has been recorded. Open the link from the message you were sent, or ask for a new one.</p>",
-    "</body></html>",
-  ].join("\n");
-}
-
-/**
- * What an approver sees once their answer is recorded.
- *
- * The resume acknowledgment carries the suspension id, the internal route id
- * and the server's own file paths. This mount demands no credential and the
- * approver's browser now lands here from a form, so the acknowledgment is
- * summarised rather than rendered: the detail stays in the logs, where it is
- * useful and not public.
- *
- * @param ack Whatever `.resume()` answered with
- */
-export function outcomePage(ack: unknown): string {
-  const status =
-    typeof ack === "object" && ack !== null && "status" in ack
-      ? String((ack as { status: unknown }).status)
-      : "";
-  const line =
-    status === "duplicate"
-      ? "This request was already answered. Nothing changed."
-      : status === "resumed"
-        ? "Recorded. You can close this page."
-        : "Your answer could not be recorded. Ask for a new link.";
-  return [
-    "<!doctype html>",
-    '<html lang="en"><head><meta charset="utf-8">',
-    "<title>Approval</title></head><body>",
-    `<p>${escapeHtml(line)}</p>`,
-    "</body></html>",
-  ].join("\n");
+export function resultFor(decision: Decision): ApprovalDecision {
+  switch (decision) {
+    case "approve":
+      return { approved: true };
+    case "deny":
+      return { approved: false };
+  }
 }

@@ -3,12 +3,15 @@ import { bootServer } from "@routecraft/testing";
 import approvalCallback from "../capabilities/approvals/approval-callback/route.js";
 import approvalConfirm from "../capabilities/approvals/approval-confirm/route.js";
 import approvalPark from "../capabilities/approvals/approval-park/route.js";
+import { confirmPage, failurePage } from "../shared/approval-pages.js";
 import {
+  APPROVAL_TTL,
   ApprovalRequest,
-  confirmPage,
+  DECISIONS,
   decisionLinks,
   isKnownApprover,
   mayApprove,
+  resultFor,
 } from "../shared/approval.js";
 
 /**
@@ -209,25 +212,68 @@ describe("approval link handling", () => {
    *   mounts the harness under a prefix, which APPROVAL_BASE_URL may name.
    */
   test("posts to its own URL rather than a rebuilt one", () => {
-    expect(confirmPage("approve")).toContain('action=""');
-    expect(confirmPage("approve")).not.toContain("/approvals/");
-    expect(confirmPage("deny")).toContain("Confirm: deny");
+    expect(confirmPage("approve", APPROVAL_TTL.human)).toContain('action=""');
+    expect(confirmPage("approve", APPROVAL_TTL.human)).not.toContain(
+      "/approvals/",
+    );
+    expect(confirmPage("deny", APPROVAL_TTL.human)).toContain("Confirm: deny");
   });
 
   /**
-   * @case A token carrying HTML metacharacters cannot break out of the markup
-   * @preconditions A token holding a quote, angle brackets and a script tag
-   * @expectedResult Neither the tag nor a bare quote survives into the page.
-   *   Percent-encoding neutralises it before the HTML escaper sees it, so this
-   *   asserts the property both guards provide rather than either mechanism.
+   * @case No caller-supplied text reaches the rendered page
+   * @preconditions confirmPage given a validated decision and nothing else
+   * @expectedResult No script tag and an empty action. The token never enters
+   *   the markup and the decision is narrowed to two literals before it gets
+   *   here, so there is no injection surface left rather than an escaped one.
    */
   test("renders no caller-supplied text at all", () => {
-    // The token no longer reaches the markup, and the decision is narrowed to
-    // two literals before it gets here, so there is no injection surface left
-    // rather than an escaped one.
-    const page = confirmPage("approve");
+    const page = confirmPage("approve", APPROVAL_TTL.human);
     expect(page).not.toContain("<script");
     expect(/action="([^"]*)"/.exec(page)?.[1]).toBe("");
+  });
+
+  /**
+   * @case Every minted verdict has an explicit meaning
+   * @preconditions The decision vocabulary as declared
+   * @expectedResult Each value maps to a verdict deliberately. A third value
+   *   added to DECISIONS without an arm in resultFor fails the typecheck
+   *   rather than being recorded as a refusal against a token that cannot be
+   *   answered twice, and this pins that every declared value is covered.
+   */
+  test("map every minted verdict deliberately", () => {
+    expect(resultFor("approve")).toEqual({ approved: true });
+    expect(resultFor("deny")).toEqual({ approved: false });
+    for (const decision of DECISIONS) {
+      expect(typeof resultFor(decision).approved).toBe("boolean");
+    }
+  });
+
+  /**
+   * @case The failure page tells the approver nothing was recorded
+   * @preconditions failurePage as shipped
+   * @expectedResult It says nothing changed and to ask for a new link, and it
+   *   names no cause: expired, never minted and already settled all render the
+   *   same words, because this mount demands no credential.
+   */
+  test("say nothing was recorded, and why not", () => {
+    const page = failurePage();
+    expect(page).toContain("Nothing has changed");
+    expect(page).toContain("Ask for a new link");
+    for (const code of ["RC5041", "RC5046", "RC5047", "RC5056"]) {
+      expect(page).not.toContain(code);
+    }
+  });
+
+  /**
+   * @case The confirmation page warns that the link will not wait
+   * @preconditions The TTL approval-park suspends with
+   * @expectedResult The page names the same window, so an approver who has
+   *   left the tab open knows the answer can still be refused
+   */
+  test("warn that the link expires", () => {
+    expect(confirmPage("approve", APPROVAL_TTL.human)).toContain(
+      APPROVAL_TTL.human,
+    );
   });
 
   /**
@@ -240,5 +286,42 @@ describe("approval link handling", () => {
     const { approveLink, denyLink } = decisionLinks("tok");
     expect(approveLink).toContain("/approvals/tok/approve");
     expect(denyLink).toContain("/approvals/tok/deny");
+  });
+
+  /**
+   * @case A token that cannot be resumed answers a page, not a server error
+   * @preconditions A booted approvals mount and a syntactically valid token
+   *   that was never minted, which is what an expired link becomes once the
+   *   sweeper has retired the record
+   * @expectedResult HTML saying nothing was recorded. Without an error arm the
+   *   resume throws, the dispatcher serves its JSON 500, and the approver who
+   *   opened the mail late has no way to learn they need a new link.
+   */
+  test("answer an unusable token with a page rather than a 500", async () => {
+    const booted = await bootServer((b) =>
+      b
+        .with({
+          suspension: {},
+          servers: { default: { port: 0 } },
+          http: { mounts: { approvals: { path: "/", auth: false } } },
+        })
+        .routes([approvalPark, approvalConfirm, approvalCallback]),
+    );
+    try {
+      const url = `http://127.0.0.1:${booted.port}/approvals/never-minted/approve`;
+
+      const page = await fetch(url);
+      expect(page.status).toBe(200);
+      expect(page.headers.get("cache-control")).toBe("no-store");
+
+      const posted = await fetch(url, { method: "POST" });
+      expect(posted.status).toBe(400);
+      expect(posted.headers.get("content-type")).toContain("text/html");
+      const body = await posted.text();
+      expect(body).toContain("Ask for a new link");
+      expect(body).not.toContain("internal server error");
+    } finally {
+      await booted.ctx.stop();
+    }
   });
 });

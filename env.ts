@@ -6,7 +6,7 @@ import { z } from "zod";
  * `.env.schema` is the human-facing half of the same contract: it declares
  * every variable, what it is for, and whether it is required, without ever
  * carrying a value. This file is the machine-facing half, and
- * `test/env-schema.test.ts` fails the build when the two drift apart, so a
+ * `test/env-contract.test.ts` fails the build when the two drift apart, so a
  * variable added to one and forgotten in the other cannot ship.
  *
  * Parsing at import means a misconfigured deployment fails at boot with the

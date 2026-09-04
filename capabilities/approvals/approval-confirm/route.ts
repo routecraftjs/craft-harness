@@ -1,11 +1,36 @@
 import { craft, http } from "@routecraft/routecraft";
 import type { Exchange } from "@routecraft/routecraft";
 import {
+  PAGE_HEADERS,
   confirmPage,
-  isDecision,
   refusalPage,
+} from "../../../shared/approval-pages.js";
+import {
+  APPROVAL_TTL,
+  isDecision,
   type Decision,
 } from "../../../shared/approval.js";
+
+/** The token a request's path carries, whether or not the rest of it parses. */
+function tokenOf(exchange: Exchange): string {
+  return String(
+    exchange.headers["routecraft.http.params"]?.["token"] ?? "anonymous",
+  );
+}
+
+/**
+ * The token and verdict a request's path carries, or `undefined` when the
+ * path is not one this harness minted.
+ */
+function linkOf(
+  exchange: Exchange,
+): { token: string; decision: Decision } | undefined {
+  const params = exchange.headers["routecraft.http.params"];
+  const token = String(params?.["token"] ?? "");
+  const decision = String(params?.["decision"] ?? "");
+  if (token === "" || !isDecision(decision)) return undefined;
+  return { token, decision };
+}
 
 /**
  * The page a decision link opens. It resolves nothing.
@@ -25,24 +50,18 @@ import {
  * arriving cold still has to recognise the request from the mail that carried
  * the link.
  */
-/**
- * The token and verdict a request's path carries, or `undefined` when the
- * path is not one this harness minted.
- */
-function linkOf(
-  exchange: Exchange,
-): { token: string; decision: Decision } | undefined {
-  const params = exchange.headers["routecraft.http.params"];
-  const token = String(params?.["token"] ?? "");
-  const decision = String(params?.["decision"] ?? "");
-  if (token === "" || !isDecision(decision)) return undefined;
-  return { token, decision };
-}
-
 export default craft()
   .id("approval-confirm")
   .description("Confirm a decision before it is recorded.")
-  .throttle({ rate: 60, per: "minute", mode: "reject" })
+  .throttle({
+    rate: 60,
+    per: "minute",
+    mode: "reject",
+    // Per link, not per route. One bucket for the whole route lets any
+    // anonymous caller spend the minute on tokens nobody minted and reject
+    // the approver who actually holds one.
+    key: tokenOf,
+  })
   .from(
     http({
       path: "/approvals/:token/:decision",
@@ -57,7 +76,10 @@ export default craft()
     linkOf(exchange) === undefined ? 400 : 200,
   )
   .header("routecraft.http.response.contentType", "text/html; charset=utf-8")
+  .header("routecraft.http.response.headers", PAGE_HEADERS)
   .transform((_body, exchange) => {
     const link = linkOf(exchange);
-    return link === undefined ? refusalPage() : confirmPage(link.decision);
+    return link === undefined
+      ? refusalPage()
+      : confirmPage(link.decision, APPROVAL_TTL.human);
   });

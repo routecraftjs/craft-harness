@@ -7,12 +7,38 @@ import {
 } from "@routecraft/routecraft";
 import { OPERATOR_SUBJECT } from "../../../craft.config.js";
 import {
+  PAGE_HEADERS,
+  failurePage,
+  outcomePage,
+  refusalPage,
+} from "../../../shared/approval-pages.js";
+import {
   type Decision,
   isDecision,
   isKnownApprover,
-  outcomePage,
-  refusalPage,
+  resultFor,
 } from "../../../shared/approval.js";
+
+/** The token a request's path carries, whether or not the rest of it parses. */
+function tokenOf(exchange: Exchange): string {
+  return String(
+    exchange.headers["routecraft.http.params"]?.["token"] ?? "anonymous",
+  );
+}
+
+/**
+ * The token and verdict a request's path carries, or `undefined` when the
+ * path is not one this harness minted.
+ */
+function linkOf(
+  exchange: Exchange,
+): { token: string; decision: Decision } | undefined {
+  const params = exchange.headers["routecraft.http.params"];
+  const token = String(params?.["token"] ?? "");
+  const decision = String(params?.["decision"] ?? "");
+  if (token === "" || !isDecision(decision)) return undefined;
+  return { token, decision };
+}
 
 /**
  * The door that actually spends the token, reached only by a form post.
@@ -34,6 +60,13 @@ import {
  * continuation, where the request body is readable; the hook deliberately
  * cannot see the body.
  *
+ * ## Why a branch and not a filter
+ *
+ * A segment this harness never minted is refused with a 400 rather than
+ * dropped. A dropped exchange answers 204, which renders as a blank page,
+ * and a refusal should say so. The guard sits here as well as on the
+ * confirmation page because this is the door that records.
+ *
  * ## Raising the floor
  *
  * With no validator on this mount, the principal is whatever the mount
@@ -43,27 +76,29 @@ import {
  * subject instead: every approval in the harness moves from "holder of a
  * link" to "this person", and no route changes.
  */
-/**
- * The token and verdict a request's path carries, or `undefined` when the
- * path is not one this harness minted.
- */
-function linkOf(
-  exchange: Exchange,
-): { token: string; decision: Decision } | undefined {
-  const params = exchange.headers["routecraft.http.params"];
-  const token = String(params?.["token"] ?? "");
-  const decision = String(params?.["decision"] ?? "");
-  if (token === "" || !isDecision(decision)) return undefined;
-  return { token, decision };
-}
-
 export default craft()
   .id("approval-callback")
-  .description("Resolve an approval from the link a human was sent.")
+  .description(
+    "Record an approval verdict submitted from the confirmation form.",
+  )
+  // Route scope, so it covers the resume below rather than the next step
+  // alone, and its return value becomes the response body. A resume that
+  // cannot land is the TTL doing its job, not a fault: expired, never minted,
+  // already settled and refused all render one sentence, because the cause is
+  // the record's lifecycle and this mount demands no credential.
+  .error(() => failurePage())
   // Public in the sense that it demands no credential of its own. A token
   // is single-use and short-lived, but it is guessable-shaped enough to be
   // worth pacing, and this door is reachable from wherever the mail went.
-  .throttle({ rate: 30, per: "minute", mode: "reject" })
+  .throttle({
+    rate: 30,
+    per: "minute",
+    mode: "reject",
+    // Per link, not per route. One bucket for the whole route lets any
+    // anonymous caller spend the minute on tokens nobody minted and reject
+    // the approver who actually holds one.
+    key: tokenOf,
+  })
   .from(
     http({
       path: "/approvals/:token/:decision",
@@ -71,13 +106,13 @@ export default craft()
       mount: "approvals",
     }),
   )
-  // The same rule the confirmation page applies, on the door that records.
-  // Hardening only the page left `decision === "approve"` here treating every
-  // other segment as a denial, so a rewritten or truncated URL reaching this
-  // route recorded a verdict nobody chose and burned the single-use token,
-  // which is the failure the split exists to prevent. A branch rather than a
-  // filter, because a dropped exchange answers 204 and a refusal should say so.
   .header("routecraft.http.response.contentType", "text/html; charset=utf-8")
+  .header("routecraft.http.response.headers", PAGE_HEADERS)
+  // Refusal is the default so the error handler above does not have to set it.
+  // A handler cannot: the exchange's headers are not writable from there, and
+  // a handler that throws takes the default error path, which is the 500 this
+  // whole arm exists to avoid. Only the branch that records raises it to 200.
+  .header("routecraft.http.response.status", 400)
   .choice(
     when(
       (exchange) => linkOf(exchange) !== undefined,
@@ -89,10 +124,7 @@ export default craft()
               if (link === undefined) {
                 throw new Error("unreachable: guarded by the branch");
               }
-              return {
-                token: link.token,
-                result: { approved: link.decision === "approve" },
-              };
+              return { token: link.token, result: resultFor(link.decision) };
             },
             {
               // At the floor there is no validator on this mount, so nobody
@@ -106,9 +138,10 @@ export default craft()
                 isKnownApprover(principal.subject),
             },
           )
-          // The raw acknowledgment names the suspension, the internal route
-          // and the server's own file paths, on a mount that carries no
-          // credential, and an approver's browser now renders it.
+          // The raw acknowledgment carries the suspension id, the internal
+          // route id and absolute server paths, and this mount demands no
+          // credential, so only the summary may reach the page.
+          .header("routecraft.http.response.status", 200)
           .transform((ack) => outcomePage(ack)),
     ),
     otherwise((branch) =>
