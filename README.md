@@ -273,8 +273,15 @@ and both are read by machines before a human sees them: Safe Links, Proofpoint,
 the Gmail proxy, antivirus scanners and chat unfurlers all issue a GET on every
 link they find. An endpoint that resolved on retrieval would be resolved by
 whichever scanner arrived first, and since both links sit in the same message,
-which verdict it picked would be arbitrary. A form post is the one act in this
-flow no prefetcher performs.
+which verdict it picked would be arbitrary. A form post is not something a
+client that only retrieves will do.
+
+It stops prefetching, not automated interaction. A detonation sandbox or
+browser-isolation proxy that renders the page and clicks the button gets
+through, and a nonce would not help because a renderer carries it too. The
+only thing that upgrades this flow from "holder of a link" to "this person" is
+a validator on the `approvals` mount, at which point the callback's authorize
+hook starts demanding a verified approver.
 
 The page names the verdict, not the request. Reading a parked exchange by
 token needs `suspensionIdFor` and the configured store, and the framework

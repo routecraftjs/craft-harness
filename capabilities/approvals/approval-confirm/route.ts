@@ -59,7 +59,5 @@ export default craft()
   .header("routecraft.http.response.contentType", "text/html; charset=utf-8")
   .transform((_body, exchange) => {
     const link = linkOf(exchange);
-    return link === undefined
-      ? refusalPage()
-      : confirmPage(link.token, link.decision);
+    return link === undefined ? refusalPage() : confirmPage(link.decision);
   });

@@ -99,28 +99,27 @@ export function isDecision(value: string): value is Decision {
  * name. A form post is the one act in this flow a link prefetcher does not
  * perform, and everything beyond that is a byte the approver has to trust.
  *
- * The token travels in the form action rather than a hidden field so the GET
- * and the POST address the same parked exchange the same way. `escapeHtml` is
- * belt and braces: both values are already percent-encoded by the time they
- * reach the markup, and neither guard is load-bearing alone.
+ * The form action is empty, so the POST goes to the document's own URL: the
+ * exact path the GET arrived on, token and all. Rebuilding an absolute path
+ * would root it at the origin and 404 behind a proxy mounting the harness
+ * under a prefix, which `APPROVAL_BASE_URL` is free to name. It also means the
+ * token never reaches the markup.
  *
  * It cannot show the request itself. Reading a parked exchange by token needs
  * `suspensionIdFor` and the configured store, and the framework exports
  * neither to a route, so the page names the verdict and not the question. See
  * the README on what an approver therefore has to carry from the mail.
  *
- * @param token The resume token from the link
  * @param decision The verdict the link carried, already validated
  */
-export function confirmPage(token: string, decision: Decision): string {
-  const action = `/approvals/${encodeURIComponent(token)}/${decision}`;
+export function confirmPage(decision: Decision): string {
   return [
     "<!doctype html>",
     '<html lang="en"><head><meta charset="utf-8">',
     "<title>Confirm your decision</title></head><body>",
     `<h1>Confirm: ${escapeHtml(decision)}</h1>`,
     "<p>Your answer is not recorded until you confirm. Nothing has happened yet.</p>",
-    `<form method="post" action="${escapeHtml(action)}">`,
+    '<form method="post" action="">',
     `<button type="submit">Confirm ${escapeHtml(decision)}</button>`,
     "</form>",
     "</body></html>",
@@ -145,6 +144,37 @@ export function refusalPage(): string {
     "<title>Not a valid link</title></head><body>",
     "<h1>This link is not one we issued</h1>",
     "<p>Nothing has been recorded. Open the link from the message you were sent, or ask for a new one.</p>",
+    "</body></html>",
+  ].join("\n");
+}
+
+/**
+ * What an approver sees once their answer is recorded.
+ *
+ * The resume acknowledgment carries the suspension id, the internal route id
+ * and the server's own file paths. This mount demands no credential and the
+ * approver's browser now lands here from a form, so the acknowledgment is
+ * summarised rather than rendered: the detail stays in the logs, where it is
+ * useful and not public.
+ *
+ * @param ack Whatever `.resume()` answered with
+ */
+export function outcomePage(ack: unknown): string {
+  const status =
+    typeof ack === "object" && ack !== null && "status" in ack
+      ? String((ack as { status: unknown }).status)
+      : "";
+  const line =
+    status === "duplicate"
+      ? "This request was already answered. Nothing changed."
+      : status === "resumed"
+        ? "Recorded. You can close this page."
+        : "Your answer could not be recorded. Ask for a new link.";
+  return [
+    "<!doctype html>",
+    '<html lang="en"><head><meta charset="utf-8">',
+    "<title>Approval</title></head><body>",
+    `<p>${escapeHtml(line)}</p>`,
     "</body></html>",
   ].join("\n");
 }

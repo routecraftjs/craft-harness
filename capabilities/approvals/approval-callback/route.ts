@@ -1,6 +1,18 @@
-import { craft, http } from "@routecraft/routecraft";
+import {
+  craft,
+  http,
+  otherwise,
+  when,
+  type Exchange,
+} from "@routecraft/routecraft";
 import { OPERATOR_SUBJECT } from "../../../craft.config.js";
-import { isKnownApprover } from "../../../shared/approval.js";
+import {
+  type Decision,
+  isDecision,
+  isKnownApprover,
+  outcomePage,
+  refusalPage,
+} from "../../../shared/approval.js";
 
 /**
  * The door that actually spends the token, reached only by a form post.
@@ -31,6 +43,20 @@ import { isKnownApprover } from "../../../shared/approval.js";
  * subject instead: every approval in the harness moves from "holder of a
  * link" to "this person", and no route changes.
  */
+/**
+ * The token and verdict a request's path carries, or `undefined` when the
+ * path is not one this harness minted.
+ */
+function linkOf(
+  exchange: Exchange,
+): { token: string; decision: Decision } | undefined {
+  const params = exchange.headers["routecraft.http.params"];
+  const token = String(params?.["token"] ?? "");
+  const decision = String(params?.["decision"] ?? "");
+  if (token === "" || !isDecision(decision)) return undefined;
+  return { token, decision };
+}
+
 export default craft()
   .id("approval-callback")
   .description("Resolve an approval from the link a human was sent.")
@@ -45,23 +71,49 @@ export default craft()
       mount: "approvals",
     }),
   )
-  .resume(
-    (exchange) => {
-      const params = exchange.headers["routecraft.http.params"];
-      return {
-        token: params?.["token"] ?? "",
-        result: { approved: params?.["decision"] === "approve" },
-      };
-    },
-    {
-      // At the floor there is no validator on this mount, so nobody is
-      // verified and the credential is the token itself plus the fact that
-      // the link was mailed only to the address the request named. Put a
-      // validator on the mount and this same line starts demanding that the
-      // verified subject be a configured approver.
-      authorize: ({ principal }) =>
-        principal === undefined ||
-        principal.subject === OPERATOR_SUBJECT ||
-        isKnownApprover(principal.subject),
-    },
+  // The same rule the confirmation page applies, on the door that records.
+  // Hardening only the page left `decision === "approve"` here treating every
+  // other segment as a denial, so a rewritten or truncated URL reaching this
+  // route recorded a verdict nobody chose and burned the single-use token,
+  // which is the failure the split exists to prevent. A branch rather than a
+  // filter, because a dropped exchange answers 204 and a refusal should say so.
+  .header("routecraft.http.response.contentType", "text/html; charset=utf-8")
+  .choice(
+    when(
+      (exchange) => linkOf(exchange) !== undefined,
+      (branch) =>
+        branch
+          .resume(
+            (exchange) => {
+              const link = linkOf(exchange);
+              if (link === undefined) {
+                throw new Error("unreachable: guarded by the branch");
+              }
+              return {
+                token: link.token,
+                result: { approved: link.decision === "approve" },
+              };
+            },
+            {
+              // At the floor there is no validator on this mount, so nobody
+              // is verified and the credential is the token itself plus the
+              // fact that the link was mailed only to the address the request
+              // named. Put a validator on the mount and this same line starts
+              // demanding that the verified subject be a configured approver.
+              authorize: ({ principal }) =>
+                principal === undefined ||
+                principal.subject === OPERATOR_SUBJECT ||
+                isKnownApprover(principal.subject),
+            },
+          )
+          // The raw acknowledgment names the suspension, the internal route
+          // and the server's own file paths, on a mount that carries no
+          // credential, and an approver's browser now renders it.
+          .transform((ack) => outcomePage(ack)),
+    ),
+    otherwise((branch) =>
+      branch
+        .header("routecraft.http.response.status", 400)
+        .transform(() => refusalPage()),
+    ),
   );

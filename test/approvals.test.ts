@@ -130,6 +130,49 @@ describe("approval link handling", () => {
   });
 
   /**
+   * @case The door that records refuses an unminted segment too
+   * @preconditions A real parked approval, its token posted with a mangled
+   *   verdict segment, then with the genuine one
+   * @expectedResult The mangled POST is refused and leaves the token unspent,
+   *   so the genuine approve that follows still resolves. Hardening only the
+   *   page left this coercing every non-approve segment into a denial, which
+   *   recorded a verdict nobody chose and burned the single-use token.
+   */
+  test("a mangled verdict does not record a denial or spend the token", async () => {
+    const booted = await bootServer((b) =>
+      b
+        .with({
+          suspension: {},
+          servers: { default: { port: 0 } },
+          http: { mounts: { approvals: { path: "/", auth: false } } },
+        })
+        .routes([approvalPark, approvalConfirm, approvalCallback]),
+    );
+    try {
+      const parked = await booted.ctx.client.sendDirect<
+        unknown,
+        { token?: string }
+      >("approval-park", {
+        question: "Ship it",
+        scope: "publish",
+        approver: "ops@example.com",
+        session: "demo",
+      });
+      const token = encodeURIComponent(String(parked.token ?? ""));
+      const base = `http://127.0.0.1:${booted.port}/approvals/${token}`;
+
+      const mangled = await fetch(`${base}/approv`, { method: "POST" });
+      expect(mangled.status).toBe(400);
+
+      const genuine = await fetch(`${base}/approve`, { method: "POST" });
+      expect(genuine.status).toBeLessThan(400);
+      expect(await genuine.text()).toContain("Recorded");
+    } finally {
+      await booted.ctx.stop();
+    }
+  });
+
+  /**
    * @case A segment this harness never minted is refused, not coerced
    * @preconditions A link whose decision segment is neither approve nor deny
    * @expectedResult Refused rather than rendered as a deny page. Folding it to
@@ -158,18 +201,17 @@ describe("approval link handling", () => {
   });
 
   /**
-   * @case The page posts back the verdict its link carried
-   * @preconditions A link naming approve, and one naming deny
-   * @expectedResult Each page posts its own verdict, so confirming sends back
-   *   what was sent out rather than a fresh choice
+   * @case The page posts to its own URL rather than a rebuilt one
+   * @preconditions confirmPage as shipped
+   * @expectedResult An empty action, which resolves against the document URL,
+   *   so the POST lands on the exact path the GET arrived on. A rebuilt
+   *   absolute path would be rooted at the origin and 404 behind a proxy that
+   *   mounts the harness under a prefix, which APPROVAL_BASE_URL may name.
    */
-  test("each page posts back the verdict its link carried", () => {
-    expect(confirmPage("tok", "approve")).toContain(
-      'action="/approvals/tok/approve"',
-    );
-    expect(confirmPage("tok", "deny")).toContain(
-      'action="/approvals/tok/deny"',
-    );
+  test("posts to its own URL rather than a rebuilt one", () => {
+    expect(confirmPage("approve")).toContain('action=""');
+    expect(confirmPage("approve")).not.toContain("/approvals/");
+    expect(confirmPage("deny")).toContain("Confirm: deny");
   });
 
   /**
@@ -179,13 +221,13 @@ describe("approval link handling", () => {
    *   Percent-encoding neutralises it before the HTML escaper sees it, so this
    *   asserts the property both guards provide rather than either mechanism.
    */
-  test("cannot be broken out of by a hostile token", () => {
-    const page = confirmPage('"><script>alert(1)</script>', "approve");
+  test("renders no caller-supplied text at all", () => {
+    // The token no longer reaches the markup, and the decision is narrowed to
+    // two literals before it gets here, so there is no injection surface left
+    // rather than an escaped one.
+    const page = confirmPage("approve");
     expect(page).not.toContain("<script");
-    const action = /action="([^"]*)"/.exec(page)?.[1] ?? "";
-    expect(action).not.toContain("<");
-    expect(action).not.toContain(">");
-    expect(action).toContain("%3Cscript%3E");
+    expect(/action="([^"]*)"/.exec(page)?.[1]).toBe("");
   });
 
   /**
