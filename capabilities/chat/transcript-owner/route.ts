@@ -4,7 +4,6 @@ import type { Exchange } from "@routecraft/routecraft";
 import {
   SESSION_HEADER,
   TranscriptOp,
-  type TranscriptOutcome,
   type TranscriptResult,
   applyTranscriptOp,
   transcriptFile,
@@ -12,6 +11,22 @@ import {
 } from "../../../shared/transcript.js";
 
 const OUTCOME = "harness.transcript.outcome";
+
+/**
+ * The decision this exchange reached, which the body cannot carry because the
+ * body has to become the array the write persists.
+ *
+ * Throws rather than asserting: a missing header means the step order changed,
+ * and failing inside the lock is better than writing whatever `undefined`
+ * parses to.
+ */
+function outcomeOf(exchange: Exchange<unknown>): TranscriptResult {
+  const outcome = exchange.headers[OUTCOME];
+  if (outcome === undefined) {
+    throw new Error("transcript-owner: the outcome header was not set");
+  }
+  return outcome as TranscriptResult;
+}
 
 /**
  * The session an incoming operation names.
@@ -27,17 +42,13 @@ function sessionOfOp(exchange: Exchange<unknown>): string {
 /**
  * The one route that reads and writes a session's transcript.
  *
- * `chat` appends the question, dispatches, and appends the answer.  `compact`
+ * `chat` appends the question, dispatches, and appends the answer. `compact`
  * reads the whole conversation, spends a model call on it, and writes a
- * shorter one back. Both are read-modify-write against the same file, and the
- * model call in the middle of compact's cycle makes its window seconds wide:
- * two turns arriving in that window were read by nobody and overwritten by
- * the compaction that did not know about them.
+ * shorter one back. Both are read-modify-write against the same file, so both
+ * belong behind one lock.
  *
- * So the file has an owner, and the checks that decide whether a write is
- * safe happen here, inside the lock, against the file as it actually is. A
- * caller that read the file and decided for itself would be deciding about a
- * conversation that no longer exists.
+ * The checks that decide whether a write is safe run inside that lock, in
+ * `applyTranscriptOp`, which carries the reasoning.
  *
  * The key is the session, so two people talking in different conversations do
  * not queue behind each other. Keying per route instead would let `chat` and
@@ -50,8 +61,15 @@ export default craft()
   .id("transcript-owner")
   .description("Serialise every read and write of one session's transcript.")
   .input({ body: TranscriptOp })
+  // The deadline sits outside the lock in the pre-from chain, so it bounds the
+  // wait for a slot as well as the work. Without it a write that never returns
+  // parks every caller for that conversation in an unbounded queue.
+  .timeout("30s")
   .concurrency({
     max: 1,
+    // A backlog this long means something is wrong upstream, and RC5026 tells
+    // the caller so rather than growing the queue in silence.
+    maxQueue: 100,
     // One slot per conversation. The file is the resource, and the session
     // names the file.
     key: (exchange) => transcriptFile(sessionOfOp(exchange)),
@@ -70,26 +88,14 @@ export default craft()
   .header(OUTCOME, (exchange) =>
     applyTranscriptOp(exchange.body, exchange.body.lines),
   )
-  .transform(
-    (_body, exchange) => (exchange.headers[OUTCOME] as TranscriptOutcome).keep,
-  )
-  // A refused operation still lands here, writing back exactly what was read,
-  // which is the same file. Branching to skip the write would buy nothing and
-  // cost the one property worth having: whatever happens, the file on disk is
-  // what this route decided under its lock.
-  //
-  // `.to()`, never `.tap()`. A tap is detached by contract: the framework runs
-  // it on a tracked task and the pipeline continues immediately, so the route
-  // answers its caller before the file has been written and the next read sees
-  // the state before this one. That defeats the lock above, which can only
-  // serialise work the route actually waits for.
-  .to(jsonl({ path: transcriptFileOf, createDirs: true }))
-  .transform((turns, exchange): TranscriptResult => {
-    const outcome = exchange.headers[OUTCOME] as TranscriptOutcome;
-    return {
-      turns,
-      before: outcome.before,
-      written: outcome.written,
-      refused: outcome.refused,
-    };
-  });
+  .transform((_body, exchange) => outcomeOf(exchange).turns)
+  // `.to()`, not `.tap()`: a tap is detached and would answer before the write.
+  // Gated on `written`, so a read and a refused replacement change nothing. A
+  // read that wrote would drop the lines the parse rejects and would create a
+  // transcript for a session that has none, which is what a mistyped
+  // `--session` asks for.
+  .to(async (exchange) => {
+    if (!outcomeOf(exchange).written) return;
+    await jsonl({ path: transcriptFileOf, createDirs: true }).send(exchange);
+  })
+  .transform((_written, exchange): TranscriptResult => outcomeOf(exchange));

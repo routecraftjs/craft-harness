@@ -25,17 +25,11 @@ import {
  *
  * ## What is checked before the write
  *
- * The model is asked for a structured result and the schema is what
- * validates it, so a summary that came back as prose never reaches the
- * file. Three rules on top of that, and all three are enforced by
- * `transcript-owner` rather than here: the result must have turns, it must
- * not be longer than what it replaced, and the transcript must still hold the
- * same number of turns this route read. That last one is why they live there.
- * A model call takes seconds, and a turn arriving in that window would be
- * erased by a replacement computed before it existed; a check made here would
- * have passed while doing it. The failure being guarded against is a
- * compaction that silently destroys a conversation, and a transcript file has
- * no undo.
+ * The model is asked for a structured result and the schema is what validates
+ * it, so a summary that came back as prose never reaches the file. The three
+ * rules that decide whether the result may replace the transcript are applied
+ * by `transcript-owner`, not here; `applyTranscriptOp` says why they can only
+ * be sound there.
  *
  * A session with nothing in it is refused before the model is asked. It
  * cannot produce a shorter conversation than no conversation, so the call

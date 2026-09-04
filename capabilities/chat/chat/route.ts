@@ -56,6 +56,15 @@ export const ChatReply = z.object({
 });
 export type ChatReply = z.infer<typeof ChatReply>;
 
+/**
+ * What the agent said, carried past the append so the caller is told the
+ * answer rather than whatever ended up last in the file. They are the same
+ * today; they would stop being the same the moment an operation rewrites the
+ * tail, and the difference would surface as an empty reply nobody could tell
+ * from the model saying nothing.
+ */
+const REPLY_HEADER = "harness.chat.reply";
+
 export default craft()
   .id("chat")
   .description("Send a message to the agent and get its reply.")
@@ -81,6 +90,7 @@ export default craft()
     ),
   )
   .enrich(agent("aria"))
+  .header(REPLY_HEADER, (exchange) => exchange.body.text)
   .transform((result: AgentResult, exchange): TranscriptOp => ({
     op: "append",
     session: String(exchange.headers[SESSION_HEADER] ?? ""),
@@ -90,7 +100,7 @@ export default craft()
     direct<TranscriptOp, TranscriptResult>("transcript-owner"),
     only((result: TranscriptResult) => result, "result"),
   )
-  .transform((body, exchange): ChatReply => ({
+  .transform((_body, exchange): ChatReply => ({
     session: String(exchange.headers[SESSION_HEADER] ?? ""),
-    reply: body.result.turns[body.result.turns.length - 1]?.text ?? "",
+    reply: String(exchange.headers[REPLY_HEADER] ?? ""),
   }));

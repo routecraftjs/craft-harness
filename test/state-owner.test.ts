@@ -46,7 +46,7 @@ describe("state operations", () => {
       [task, later],
     );
     expect(outcome.due.map((t) => t.id)).toEqual(["one"]);
-    expect(outcome.keep.map((t) => t.id)).toEqual(["two"]);
+    expect(outcome.tasks.map((task) => task.id)).toEqual(["two"]);
   });
 
   /**
@@ -59,7 +59,37 @@ describe("state operations", () => {
   test("report a cancellation that matched nothing", () => {
     const outcome = applyScheduleOp({ op: "cancel", id: "absent" }, [task]);
     expect(outcome.cancelled).toBe(false);
-    expect(outcome.keep.map((t) => t.id)).toEqual(["one"]);
+    expect(outcome.tasks.map((task) => task.id)).toEqual(["one"]);
+  });
+
+  /**
+   * @case A read changes nothing
+   * @preconditions A list against a file holding one task the schema accepts
+   *   and one line it does not
+   * @expectedResult Reported as not written. Answering a query by writing back
+   *   what the parse produced would erase the rejected line permanently, with
+   *   no error, which is the loss the recovery in front of every read exists
+   *   to prevent.
+   */
+  test("report a read as changing nothing", () => {
+    const outcome = applyScheduleOp({ op: "list" }, [task, { junk: true }]);
+    expect(outcome.written).toBe(false);
+    expect(outcome.tasks.map((entry) => entry.id)).toEqual(["one"]);
+  });
+
+  /**
+   * @case An add names the task it created
+   * @preconditions An add against a file that already holds one task
+   * @expectedResult The created task comes back named. Recovering it from the
+   *   end of the array would tie the caller's answer to an ordering nobody has
+   *   promised to keep, and a sort added later would hand a caller somebody
+   *   else's task.
+   */
+  test("name the task an add created", () => {
+    const created = { ...task, id: "new" };
+    const outcome = applyScheduleOp({ op: "add", task: created }, [task]);
+    expect(outcome.added).toEqual(created);
+    expect(outcome.written).toBe(true);
   });
 
   /**
@@ -87,7 +117,7 @@ describe("state operations", () => {
     );
     expect(outcome.written).toBe(false);
     expect(outcome.refused).toContain("moved from 2 turns to 3");
-    expect(outcome.keep).toHaveLength(3);
+    expect(outcome.turns).toHaveLength(3);
   });
 
   /**
@@ -166,15 +196,21 @@ describe("the schedule file has one owner", () => {
       .build();
     await t.startAndWaitReady();
 
-    await Promise.all(
+    const created = await Promise.all(
       Array.from({ length: 20 }, (_unused, index) =>
-        t!.client.sendDirect("schedule-task", {
-          task: `task ${index}`,
-          session: "demo",
-          inMinutes: 60,
-        }),
+        t!.client.sendDirect<unknown, { id: string; task: string }>(
+          "schedule-task",
+          { task: `task ${index}`, session: "demo", inMinutes: 60 },
+        ),
       ),
     );
+
+    // Each caller is answered with its own task, not whichever one happened to
+    // land last in the file.
+    expect(new Set(created.map((entry) => entry.id)).size).toBe(20);
+    for (const [index, entry] of created.entries()) {
+      expect(entry.task).toBe(`task ${index}`);
+    }
 
     const listed = await t.client.sendDirect<unknown, { tasks: unknown[] }>(
       "list-schedules",
@@ -263,6 +299,28 @@ describe("a transcript has one owner", () => {
       { op: "read", session: "owner-a" },
     );
     expect(read.turns).toHaveLength(12);
+  });
+
+  /**
+   * @case Reading a conversation that does not exist creates nothing
+   * @preconditions A read for a session with no transcript file
+   * @expectedResult No file. A mistyped `--session` is the most likely input
+   *   this harness gets, and answering it by creating the file it named would
+   *   let any caller litter the state directory by reading.
+   */
+  test("create no file for a read of a session that has none", async () => {
+    t = await testContext().routes([transcriptOwner]).build();
+    await t.startAndWaitReady();
+
+    const read = await t.client.sendDirect<unknown, { turns: unknown[] }>(
+      "transcript-owner",
+      { op: "read", session: "owner-a" },
+    );
+
+    expect(read.turns).toEqual([]);
+    expect(
+      await readFile(transcriptFile("owner-a"), "utf8").catch(() => undefined),
+    ).toBeUndefined();
   });
 
   /**

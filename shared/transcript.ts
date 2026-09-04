@@ -163,12 +163,6 @@ export interface TranscriptResult {
   refused: string;
 }
 
-/** What one operation decides, before any of it is written. */
-export interface TranscriptOutcome extends TranscriptResult {
-  /** The file as it should be after this operation. */
-  keep: TranscriptTurn[];
-}
-
 /**
  * Decide what one operation does to a transcript, without performing it.
  *
@@ -183,17 +177,20 @@ export interface TranscriptOutcome extends TranscriptResult {
 export function applyTranscriptOp(
   op: TranscriptOp,
   lines: readonly unknown[],
-): TranscriptOutcome {
+): TranscriptResult {
   const turns = parseTurns(lines);
   const before = turns.length;
-  const unchanged = { turns, before, written: false, keep: turns };
+  const unchanged = { turns, before, written: false };
   switch (op.op) {
     case "read":
       return { ...unchanged, refused: "" };
-    case "append": {
-      const keep = [...turns, ...op.turns];
-      return { turns: keep, keep, before, written: true, refused: "" };
-    }
+    case "append":
+      return {
+        turns: [...turns, ...op.turns],
+        before,
+        written: true,
+        refused: "",
+      };
     case "replace": {
       if (op.expect !== before) {
         return {
@@ -207,13 +204,7 @@ export function applyTranscriptOp(
       if (op.turns.length >= before) {
         return { ...unchanged, refused: "the replacement is no shorter" };
       }
-      return {
-        turns: op.turns,
-        keep: op.turns,
-        before,
-        written: true,
-        refused: "",
-      };
+      return { turns: op.turns, before, written: true, refused: "" };
     }
   }
 }

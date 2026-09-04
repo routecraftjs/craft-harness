@@ -71,12 +71,14 @@ export default craft()
   })
   // The owner performs the read, the append and the write under one lock, so
   // a tick firing at the same moment cannot write back a file this task was
-  // never in. The task is recovered from the end of what the owner wrote,
-  // which is the same file, not a copy of the one this route sent.
+  // never in.
   .enrich(
     direct<ScheduleOp, ScheduleResult>("schedules-owner"),
     only((result: ScheduleResult) => result, "result"),
   )
-  .transform(
-    (body): ScheduledTask => body.result.tasks[body.result.tasks.length - 1]!,
-  );
+  .transform((body): ScheduledTask => {
+    if (body.result.added === undefined) {
+      throw new Error("schedules-owner did not report the task it created");
+    }
+    return body.result.added;
+  });

@@ -55,9 +55,7 @@ export default craft()
   // Appended, never replaced: memory that a later save can silently
   // overwrite is memory nobody can trust, and a person pruning the file is
   // the intended way to forget something.
-  // `.to()`, never `.tap()`. A tap is detached by contract, so the route would
-  // answer `saved: true` before the append had happened and a failed write
-  // would reach nobody: the agent has already told someone the note is kept.
+  // `.to()`, not `.tap()`: a tap is detached and would answer before the write.
   .to(
     file({
       path: (exchange) => memoryFile(String(exchange.headers[TOPIC_HEADER])),

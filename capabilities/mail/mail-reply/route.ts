@@ -32,9 +32,6 @@ export const MailReplyInput = z.object({
 });
 export type MailReplyInput = z.infer<typeof MailReplyInput>;
 
-/** The recipient has to outlive the send, which replaces the body. */
-const TO_HEADER = "harness.mail.to";
-
 export default craft()
   .id("mail-reply")
   .description("Send an email.")
@@ -48,12 +45,6 @@ export default craft()
     text: body.text,
     ...(body.inReplyTo === undefined ? {} : { inReplyTo: body.inReplyTo }),
   }))
-  .header(TO_HEADER, (exchange) => exchange.body.to)
-  // `.to()`, never `.tap()`. A tap is detached by contract, so the route would
-  // answer `sent: true` before the message had left, and a refused send would
-  // reach nobody but the log.
+  // `.to()`, not `.tap()`: a tap is detached and would answer before the send.
   .to(mail())
-  .transform((_sent, exchange) => ({
-    to: String(exchange.headers[TO_HEADER]),
-    sent: true,
-  }));
+  .transform((payload) => ({ to: payload.to, sent: true }));

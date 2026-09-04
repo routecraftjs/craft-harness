@@ -33,7 +33,6 @@ const ROOTS = [
  * CALLER's path is what travels, not the resolved one: the absolute path is
  * derived where it is needed and is nobody else's business.
  */
-const BYTES_HEADER = "harness.workspace.bytes";
 const PATH_HEADER = "harness.workspace.path";
 
 /** Resolve a caller path against the writable roots, or `undefined`. */
@@ -71,11 +70,7 @@ export default craft()
   // and the filter chain runs it before any step here.
   .header(PATH_HEADER, (exchange) => exchange.body.path)
   .transform((body) => body.content)
-  .header(BYTES_HEADER, (exchange) => Buffer.byteLength(exchange.body, "utf8"))
-  // `.to()`, never `.tap()`. A tap is detached by contract, so the route would
-  // report the bytes written before the write had happened. `.to()` replaces
-  // the body with the destination's answer, which is why the count is taken
-  // above rather than from the body below.
+  // `.to()`, not `.tap()`: a tap is detached and would answer before the write.
   .to(
     file({
       path: (exchange) =>
@@ -83,7 +78,7 @@ export default craft()
       createDirs: true,
     }),
   )
-  .transform((_written, exchange) => ({
+  .transform((content, exchange) => ({
     path: String(exchange.headers[PATH_HEADER]),
-    bytes: Number(exchange.headers[BYTES_HEADER] ?? 0),
+    bytes: Buffer.byteLength(content, "utf8"),
   }));

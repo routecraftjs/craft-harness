@@ -1,14 +1,30 @@
 import { craft, direct, jsonl, only } from "@routecraft/routecraft";
+import type { Exchange } from "@routecraft/routecraft";
 import { emptyWhenMissing } from "../../../shared/recover.js";
 import {
   SCHEDULES_FILE,
   ScheduleOp,
-  type ScheduleOutcome,
   type ScheduleResult,
   applyScheduleOp,
 } from "../../../shared/schedule.js";
 
 const OUTCOME = "harness.schedules.outcome";
+
+/**
+ * The decision this exchange reached, which the body cannot carry because the
+ * body has to become the array the write persists.
+ *
+ * Throws rather than asserting: a missing header means the step order changed,
+ * and failing inside the lock is better than writing whatever `undefined`
+ * parses to.
+ */
+function outcomeOf(exchange: Exchange<unknown>): ScheduleResult {
+  const outcome = exchange.headers[OUTCOME];
+  if (outcome === undefined) {
+    throw new Error("schedules-owner: the outcome header was not set");
+  }
+  return outcome as ScheduleResult;
+}
 
 /**
  * The one route that reads and writes the schedule file.
@@ -36,8 +52,16 @@ export default craft()
   .id("schedules-owner")
   .description("Serialise every read and write of the schedule file.")
   .input({ body: ScheduleOp })
+  // The deadline sits outside the lock in the pre-from chain, so it bounds the
+  // wait for a slot as well as the work. Without it a write that never returns,
+  // a hung mount or a full disk, parks every scheduling caller in an unbounded
+  // queue and the harness stops answering with nothing logged.
+  .timeout("30s")
   .concurrency({
     max: 1,
+    // A backlog this long means something is wrong upstream, and RC5026 tells
+    // the caller so rather than growing the queue in silence.
+    maxQueue: 100,
     // One file, so one slot. The selector names the resource rather than
     // relying on the route being the only writer, so sharding the schedule
     // per session later is a change to this line and nothing else.
@@ -57,16 +81,12 @@ export default craft()
   .header(OUTCOME, (exchange) =>
     applyScheduleOp(exchange.body, exchange.body.lines),
   )
-  .transform(
-    (_body, exchange) => (exchange.headers[OUTCOME] as ScheduleOutcome).keep,
-  )
-  // `.to()`, never `.tap()`. A tap is detached by contract: the framework
-  // runs it on a tracked task and the pipeline continues immediately, so the
-  // route answers its caller before the file has been written and the next
-  // read sees the state before this one. That defeats the lock above, which
-  // can only serialise work the route actually waits for.
-  .to(jsonl({ path: SCHEDULES_FILE, createDirs: true }))
-  .transform((keep, exchange): ScheduleResult => {
-    const outcome = exchange.headers[OUTCOME] as ScheduleOutcome;
-    return { tasks: keep, due: outcome.due, cancelled: outcome.cancelled };
-  });
+  .transform((_body, exchange) => outcomeOf(exchange).tasks)
+  // `.to()`, not `.tap()`: a tap is detached and would answer before the write.
+  // Gated on `written`, because a read must not rewrite the file: the parse
+  // drops lines the schema rejects, so answering a query would erase them.
+  .to(async (exchange) => {
+    if (!outcomeOf(exchange).written) return;
+    await jsonl({ path: SCHEDULES_FILE, createDirs: true }).send(exchange);
+  })
+  .transform((_written, exchange): ScheduleResult => outcomeOf(exchange));
