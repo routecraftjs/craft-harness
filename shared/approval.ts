@@ -84,32 +84,44 @@ export function decisionLinks(token: string): {
   };
 }
 
+/** The two verdicts a decision link can carry. */
+export type Decision = "approve" | "deny";
+
+/** Whether a URL segment is a verdict this harness minted. */
+export function isDecision(value: string): value is Decision {
+  return value === "approve" || value === "deny";
+}
+
 /**
  * The confirmation page a decision link opens.
  *
  * Deliberately plain: no script, no external asset, no styling worth the
- * name. The page exists to turn a retrieval into a submission, and every
- * byte beyond that is a byte an approver has to trust. A form post is what
- * a link scanner does not do; nothing else here is load-bearing.
+ * name. A form post is the one act in this flow a link prefetcher does not
+ * perform, and everything beyond that is a byte the approver has to trust.
  *
- * The token travels in the form action rather than a hidden field so that
- * the POST and the GET address the same parked exchange the same way, and
- * `escapeHtml` is applied because both segments come from the URL.
+ * The token travels in the form action rather than a hidden field so the GET
+ * and the POST address the same parked exchange the same way. `escapeHtml` is
+ * belt and braces: both values are already percent-encoded by the time they
+ * reach the markup, and neither guard is load-bearing alone.
+ *
+ * It cannot show the request itself. Reading a parked exchange by token needs
+ * `suspensionIdFor` and the configured store, and the framework exports
+ * neither to a route, so the page names the verdict and not the question. See
+ * the README on what an approver therefore has to carry from the mail.
  *
  * @param token The resume token from the link
- * @param decision `approve` or `deny`, as the link named it
+ * @param decision The verdict the link carried, already validated
  */
-export function confirmPage(token: string, decision: string): string {
-  const verdict = decision === "approve" ? "approve" : "deny";
-  const action = `/approvals/${encodeURIComponent(token)}/${verdict}`;
+export function confirmPage(token: string, decision: Decision): string {
+  const action = `/approvals/${encodeURIComponent(token)}/${decision}`;
   return [
     "<!doctype html>",
     '<html lang="en"><head><meta charset="utf-8">',
     "<title>Confirm your decision</title></head><body>",
-    `<h1>Confirm: ${escapeHtml(verdict)}</h1>`,
+    `<h1>Confirm: ${escapeHtml(decision)}</h1>`,
     "<p>Your answer is not recorded until you confirm. Nothing has happened yet.</p>",
     `<form method="post" action="${escapeHtml(action)}">`,
-    `<button type="submit">Confirm ${escapeHtml(verdict)}</button>`,
+    `<button type="submit">Confirm ${escapeHtml(decision)}</button>`,
     "</form>",
     "</body></html>",
   ].join("\n");
@@ -123,4 +135,16 @@ function escapeHtml(value: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+/** What a link this harness never issued gets instead of a decision button. */
+export function refusalPage(): string {
+  return [
+    "<!doctype html>",
+    '<html lang="en"><head><meta charset="utf-8">',
+    "<title>Not a valid link</title></head><body>",
+    "<h1>This link is not one we issued</h1>",
+    "<p>Nothing has been recorded. Open the link from the message you were sent, or ask for a new one.</p>",
+    "</body></html>",
+  ].join("\n");
 }

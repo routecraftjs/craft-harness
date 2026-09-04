@@ -5,11 +5,8 @@ import { isKnownApprover } from "../../../shared/approval.js";
 /**
  * The door that actually spends the token, reached only by a form post.
  *
- * POST, not GET, and that is the whole point of the split. A mailed link is
- * fetched by scanners and unfurlers before a human sees it, so a GET that
- * resolved an approval would let the first machine to follow the link decide
- * it. `approval-confirm` serves the page the link opens; this route resolves
- * only what a submitted form sends.
+ * POST because `approval-confirm` serves the GET a mailed link opens; the
+ * README carries why retrieval must not decide.
  *
  * One endpoint for both answers: the decision is a path segment, so the two
  * links a request produces differ only in that segment and both spend the

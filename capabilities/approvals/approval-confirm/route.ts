@@ -1,30 +1,47 @@
 import { craft, http } from "@routecraft/routecraft";
-import { confirmPage } from "../../../shared/approval.js";
+import type { Exchange } from "@routecraft/routecraft";
+import {
+  confirmPage,
+  isDecision,
+  refusalPage,
+  type Decision,
+} from "../../../shared/approval.js";
 
 /**
- * The page an approver's link opens. It resolves nothing.
+ * The page a decision link opens. It resolves nothing.
  *
- * Retrieving a URL must not decide anything, and here that is not a
- * principle but a working failure: the links go out by mail and land in the
- * agent's reply, and both are read by machines before a human sees them.
- * Safe Links, Proofpoint, the Gmail proxy, antivirus scanners and chat
- * unfurlers all issue a GET on every link they find. Whichever reached the
- * approve URL first would spend the single-use token, and since both links
- * travel in the same message, which verdict a scanner picked would be
- * arbitrary. The transcript would then record a human approver who never
- * clicked.
+ * Mail and chat pipelines fetch every link they find before a human sees it,
+ * so an endpoint that decided on retrieval was decided by a scanner. This
+ * route renders a form; the token is spent only by the POST-only
+ * `approval-callback`. The README carries the full reasoning.
  *
- * So this route renders the question and a form. The token is spent only by
- * `approval-callback`, which is POST-only, and a form submission is the one
- * act in this flow no prefetcher performs.
+ * A segment this harness did not mint is refused rather than coerced. Folding
+ * an unrecognised verdict to `deny` would render a working deny button for a
+ * link the system never issued, and a mangled URL would record a denial
+ * nobody made. Fail-closed here means refusing, not silently choosing.
  *
- * The page carries the decision the link named and posts that same decision
- * back, so the approver confirms what they were sent rather than choosing
- * again on a page they did not ask for.
+ * The page names the verdict but not the request: reading a parked exchange
+ * by token needs framework internals a route cannot reach, so an approver
+ * arriving cold still has to recognise the request from the mail that carried
+ * the link.
  */
+/**
+ * The token and verdict a request's path carries, or `undefined` when the
+ * path is not one this harness minted.
+ */
+function linkOf(
+  exchange: Exchange,
+): { token: string; decision: Decision } | undefined {
+  const params = exchange.headers["routecraft.http.params"];
+  const token = String(params?.["token"] ?? "");
+  const decision = String(params?.["decision"] ?? "");
+  if (token === "" || !isDecision(decision)) return undefined;
+  return { token, decision };
+}
+
 export default craft()
   .id("approval-confirm")
-  .description("Show an approver what they are about to decide.")
+  .description("Confirm a decision before it is recorded.")
   .throttle({ rate: 60, per: "minute", mode: "reject" })
   .from(
     http({
@@ -33,11 +50,16 @@ export default craft()
       mount: "approvals",
     }),
   )
+  // A filter would drop the exchange and answer 204, which reads as a blank
+  // page rather than a refusal. An approver following a mangled link should
+  // be told the link is not one this harness issued.
+  .header("routecraft.http.response.status", (exchange) =>
+    linkOf(exchange) === undefined ? 400 : 200,
+  )
   .header("routecraft.http.response.contentType", "text/html; charset=utf-8")
   .transform((_body, exchange) => {
-    const params = exchange.headers["routecraft.http.params"];
-    return confirmPage(
-      String(params?.["token"] ?? ""),
-      String(params?.["decision"] ?? ""),
-    );
+    const link = linkOf(exchange);
+    return link === undefined
+      ? refusalPage()
+      : confirmPage(link.token, link.decision);
   });

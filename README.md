@@ -264,7 +264,7 @@ the same links are also mailed to the approver.
 The parked half is `approval-park`, which suspends with a 30 minute TTL. Its
 continuation runs when someone answers, possibly days later and certainly in a
 different process, and posts the verdict back into the conversation that asked.
-Both links open `approval-confirm`, which renders the question and a form and
+Both links open `approval-confirm`, which renders the verdict and a form and
 resolves nothing. The token is spent only by `approval-callback`, which is
 POST-only and reached only by submitting that form.
 
@@ -275,6 +275,18 @@ link they find. An endpoint that resolved on retrieval would be resolved by
 whichever scanner arrived first, and since both links sit in the same message,
 which verdict it picked would be arbitrary. A form post is the one act in this
 flow no prefetcher performs.
+
+The page names the verdict, not the request. Reading a parked exchange by
+token needs `suspensionIdFor` and the configured store, and the framework
+exports neither to a route, so an approver arriving cold has to recognise
+which request they are answering from the mail that carried the link. Two
+pending approvals are therefore told apart by their mail, not by the page.
+Closing that needs a framework change and is filed, not fixed here.
+
+A path segment this harness did not mint is refused with a 400 and a page
+saying so. Folding an unrecognised verdict to `deny` would render a working
+deny button for a link the system never issued, so a mangled URL would record
+a denial nobody made.
 
 `approval-park` is declared `direct({ internal: true })`, and it is the one
 route here that is. It exists to be called by `request-approval` and by

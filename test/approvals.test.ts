@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { bootServer } from "@routecraft/testing";
+import approvalCallback from "../capabilities/approvals/approval-callback/route.js";
+import approvalConfirm from "../capabilities/approvals/approval-confirm/route.js";
+import approvalPark from "../capabilities/approvals/approval-park/route.js";
 import {
   ApprovalRequest,
   confirmPage,
@@ -73,48 +77,91 @@ describe("approvals", () => {
   });
 });
 
-/**
- * The split that keeps a link scanner from approving.
- *
- * The hazard is not hypothetical and not about this code being wrong in
- * isolation: mail and chat pipelines fetch every link they see, so any
- * endpoint that resolves an approval on retrieval is resolved by a machine
- * before the human reads the message. These tests hold the two halves apart.
- */
+/** The split that keeps a link scanner from approving. See the README for why. */
 describe("approval link handling", () => {
   /**
-   * @case The route that spends the token refuses to be retrieved
-   * @preconditions The callback route as shipped
-   * @expectedResult Its source is POST, so a GET from a scanner reaches the
-   *   confirmation page instead and decides nothing
+   * @case Retrieving a decision link does not spend the token
+   * @preconditions A real parked approval, its link fetched with GET and then
+   *   confirmed with POST against a booted server
+   * @expectedResult The GET answers HTML carrying a form and leaves the token
+   *   unspent, and the POST that follows still resolves it. Both halves are
+   *   asserted together because a GET that refused everything would pass the
+   *   first half while breaking the flow.
    */
-  test("the token is spent by POST, never by GET", async () => {
-    const route = (
-      await import("../capabilities/approvals/approval-callback/route.js")
-    ).default;
-    const json = JSON.stringify(route);
-    expect(json).toContain('"POST"');
-    expect(json).not.toContain('"GET"');
+  test("a GET renders and does not resolve, a POST resolves", async () => {
+    const booted = await bootServer((b) =>
+      b
+        .with({
+          suspension: {},
+          // The routes mount on `approvals`, and declaring mounts replaces
+          // whatever bootServer would have supplied, so the server it binds
+          // has to be declared here too. Port 0 lets the OS choose it.
+          servers: { default: { port: 0 } },
+          http: { mounts: { approvals: { path: "/", auth: false } } },
+        })
+        .routes([approvalPark, approvalConfirm, approvalCallback]),
+    );
+    try {
+      const parked = await booted.ctx.client.sendDirect<
+        unknown,
+        { token?: string }
+      >("approval-park", {
+        question: "Ship it",
+        scope: "publish",
+        approver: "ops@example.com",
+        session: "demo",
+      });
+      const token = String(parked.token ?? "");
+      expect(token).not.toBe("");
+
+      const url = `http://127.0.0.1:${booted.port}/approvals/${encodeURIComponent(token)}/approve`;
+
+      const page = await fetch(url);
+      expect(page.status).toBe(200);
+      expect(page.headers.get("content-type")).toContain("text/html");
+      expect(await page.text()).toContain('method="post"');
+
+      // The token survived retrieval, which is the property under test.
+      const posted = await fetch(url, { method: "POST" });
+      expect(posted.status).toBeLessThan(400);
+    } finally {
+      await booted.ctx.stop();
+    }
   });
 
   /**
-   * @case The page a mailed link opens resolves nothing
-   * @preconditions The confirm route as shipped
-   * @expectedResult It carries no resume step, so retrieving it cannot spend
-   *   a token however many times a scanner follows the link
+   * @case A segment this harness never minted is refused, not coerced
+   * @preconditions A link whose decision segment is neither approve nor deny
+   * @expectedResult Refused rather than rendered as a deny page. Folding it to
+   *   deny would show a working button for a link the system never issued, so
+   *   a mangled URL would record a denial nobody made.
    */
-  test("the confirmation page carries no resume", async () => {
-    const route = (
-      await import("../capabilities/approvals/approval-confirm/route.js")
-    ).default;
-    expect(JSON.stringify(route)).not.toContain("resume");
+  test("refuses a decision segment it did not issue", async () => {
+    const booted = await bootServer((b) =>
+      b
+        .with({
+          suspension: {},
+          servers: { default: { port: 0 } },
+          http: { mounts: { approvals: { path: "/", auth: false } } },
+        })
+        .routes([approvalConfirm]),
+    );
+    try {
+      const res = await fetch(
+        `http://127.0.0.1:${booted.port}/approvals/tok/approve-please`,
+      );
+      expect(res.status).toBe(400);
+      expect(await res.text()).toContain("not one we issued");
+    } finally {
+      await booted.ctx.stop();
+    }
   });
 
   /**
-   * @case The page posts back the decision the link named
+   * @case The page posts back the verdict its link carried
    * @preconditions A link naming approve, and one naming deny
-   * @expectedResult Each page posts its own verdict, so confirming sends
-   *   back what was sent out rather than a fresh choice
+   * @expectedResult Each page posts its own verdict, so confirming sends back
+   *   what was sent out rather than a fresh choice
    */
   test("each page posts back the verdict its link carried", () => {
     expect(confirmPage("tok", "approve")).toContain(
@@ -126,24 +173,11 @@ describe("approval link handling", () => {
   });
 
   /**
-   * @case An unrecognised decision segment is not echoed as itself
-   * @preconditions A link whose decision segment is neither approve nor deny
-   * @expectedResult Treated as deny, so a malformed or tampered link cannot
-   *   produce a page that posts an approval
-   */
-  test("an unknown decision falls to deny", () => {
-    const page = confirmPage("tok", "approve-please");
-    expect(page).toContain('action="/approvals/tok/deny"');
-    expect(page).not.toContain("approve-please");
-  });
-
-  /**
    * @case A token carrying HTML metacharacters cannot break out of the markup
    * @preconditions A token holding a quote, angle brackets and a script tag
    * @expectedResult Neither the tag nor a bare quote survives into the page.
-   *   Percent-encoding neutralises it before the HTML escaper sees it, so the
-   *   escaper is defence in depth rather than the only guard; this asserts the
-   *   property both provide rather than either mechanism.
+   *   Percent-encoding neutralises it before the HTML escaper sees it, so this
+   *   asserts the property both guards provide rather than either mechanism.
    */
   test("cannot be broken out of by a hostile token", () => {
     const page = confirmPage('"><script>alert(1)</script>', "approve");
