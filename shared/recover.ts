@@ -38,18 +38,32 @@ export function noLinesWhenMissing(error: unknown): unknown {
 }
 
 /**
- * Whether an error is a missing file, looking through the wrapping the file
- * adapter applies on its way out.
+ * What the file adapter says when the path is not there.
+ *
+ * It is the only signal available. `throwFsError` in the framework maps the
+ * errno to a fresh `new Error` with no `code` and no `cause`, so the ENOENT is
+ * gone by the time a route's `.error()` sees it and matching the sentence is
+ * what is left. It is specific enough not to collide: the same function words
+ * a permissions failure "permission denied reading file" and everything else
+ * "failed to read file".
+ */
+const ADAPTER_MISS = / adapter: (?:file|directory) not found: /;
+
+/**
+ * Whether an error means the file is not there yet.
+ *
+ * Two shapes, because two paths reach here. A direct `node:fs` call carries
+ * `code: "ENOENT"`; an adapter read carries only the sentence above. Tests
+ * for this predicate take the adapter's error from the adapter, never from a
+ * hand-built stand-in, because the shape is the whole thing under test.
  */
 function isMissingFile(error: unknown, depth = 0): boolean {
   if (error === null || typeof error !== "object" || depth > 4) return false;
   const record = error as Record<string, unknown>;
   if (record["code"] === "ENOENT") return true;
-  if (
-    typeof record["message"] === "string" &&
-    record["message"].includes("ENOENT")
-  ) {
-    return true;
+  const message = record["message"];
+  if (typeof message === "string") {
+    if (message.includes("ENOENT") || ADAPTER_MISS.test(message)) return true;
   }
   return isMissingFile(record["cause"], depth + 1);
 }
