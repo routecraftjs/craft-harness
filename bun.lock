@@ -27,7 +27,6 @@
         "prettier": "^3.8.1",
         "typescript": "^5.9.3",
         "typescript-eslint": "^8.56.1",
-        "varlock": "^1.17.1",
       },
     },
   },
@@ -155,14 +154,6 @@
     "@typescript-eslint/utils": ["@typescript-eslint/utils@8.68.0", "", { "dependencies": { "@eslint-community/eslint-utils": "^4.9.1", "@typescript-eslint/scope-manager": "8.68.0", "@typescript-eslint/types": "8.68.0", "@typescript-eslint/typescript-estree": "8.68.0" }, "peerDependencies": { "eslint": "^8.57.0 || ^9.0.0 || ^10.0.0", "typescript": ">=4.8.4 <6.1.0" } }, "sha512-PB5gJMMOg0Q5P1tsgWtEAqQacJXq0qEqRHDX/YJ4FaTMLfZPpHB3gjl2EJuiZyPABxmj4ZQYiY9m1bdAJ5y7tQ=="],
 
     "@typescript-eslint/visitor-keys": ["@typescript-eslint/visitor-keys@8.68.0", "", { "dependencies": { "@typescript-eslint/types": "8.68.0", "eslint-visitor-keys": "^5.0.0" } }, "sha512-YR65gGdGvTUAWLldC3xLOvOzamdGzB4A5/N8rehEaHs3Zvoe39BhgY+u0SPch1OvrVTfLcc55wsSgK2NcnTS/A=="],
-
-    "@varlock/native-helper-darwin": ["@varlock/native-helper-darwin@1.17.1", "", { "os": "darwin" }, "sha512-b1Dzq5VZu9VsSHG05ulYmYBH0zP6Gd8D9tzvkvu1MmGtUBwt/E1teoXAjZvOlLetrwAyXI2Z86Gssu4JxPnt5Q=="],
-
-    "@varlock/native-helper-linux-arm64": ["@varlock/native-helper-linux-arm64@1.17.1", "", { "os": "linux", "cpu": "arm64" }, "sha512-dnrpHCqxJlyvjYMm3u6uC0H4iCmal2qvs6VZBDQc+UdOUfuiHOwkpAoCYlYeB22DNuUqCNqyzQVoqt3BbR+3Yg=="],
-
-    "@varlock/native-helper-linux-x64": ["@varlock/native-helper-linux-x64@1.17.1", "", { "os": "linux", "cpu": "x64" }, "sha512-fRSPD31umpSntaMxGSVInvknh0mCSKWXiYmM5hqnoUHg5NvlgqNifaYKu82PKydeyUu5vf6INXNHC291eBddqA=="],
-
-    "@varlock/native-helper-win32-x64": ["@varlock/native-helper-win32-x64@1.17.1", "", { "os": [ "linux", "win32", ] }, "sha512-6GzjTd3mVXdAkvDYdtGtnCzbReCD2DcGSDGPV1EE+vCfBdH/oqMokYeG/zfruhSpERYHdX4BLnQ7iGELq5igbA=="],
 
     "@vercel/oidc": ["@vercel/oidc@3.2.0", "", {}, "sha512-UycprH3T6n3jH0k44NHMa7pnFHGu/N05MjojYr+Mc6I7obkoLIJujSWwin1pCvdy/eOxrI/l3uDLQsmcrOb4ug=="],
 
@@ -809,8 +800,6 @@
     "util-deprecate": ["util-deprecate@1.0.2", "", {}, "sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw=="],
 
     "uuid": ["uuid@11.1.1", "", { "bin": { "uuid": "dist/esm/bin/uuid" } }, "sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ=="],
-
-    "varlock": ["varlock@1.17.1", "", { "optionalDependencies": { "@varlock/native-helper-darwin": "1.17.1", "@varlock/native-helper-linux-arm64": "1.17.1", "@varlock/native-helper-linux-x64": "1.17.1", "@varlock/native-helper-win32-x64": "1.17.1" }, "bin": { "varlock": "bin/cli.js" } }, "sha512-nRxUKuWvvHcCUfLTWu78GYsyR34toOWGG9nhV9ObpVxsZ07mofsAsZrg4zDnWv5sRcujpV8DiQ9I5euDqIQ1WQ=="],
 
     "wait-port": ["wait-port@1.1.0", "", { "dependencies": { "chalk": "^4.1.2", "commander": "^9.3.0", "debug": "^4.3.4" }, "bin": { "wait-port": "bin/wait-port.js" } }, "sha512-3e04qkoN3LxTMLakdqeWth8nih8usyg+sf1Bgdf9wwUkp05iuK1eSY/QpLvscT/+F/gA89+LpUmmgBtesbqI2Q=="],
 

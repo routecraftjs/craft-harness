@@ -264,7 +264,17 @@ the same links are also mailed to the approver.
 The parked half is `approval-park`, which suspends with a 30 minute TTL. Its
 continuation runs when someone answers, possibly days later and certainly in a
 different process, and posts the verdict back into the conversation that asked.
-`approval-callback` is the one endpoint both links open.
+Both links open `approval-confirm`, which renders the question and a form and
+resolves nothing. The token is spent only by `approval-callback`, which is
+POST-only and reached only by submitting that form.
+
+That split is not ceremony. The links travel by mail and in the agent's reply,
+and both are read by machines before a human sees them: Safe Links, Proofpoint,
+the Gmail proxy, antivirus scanners and chat unfurlers all issue a GET on every
+link they find. An endpoint that resolved on retrieval would be resolved by
+whichever scanner arrived first, and since both links sit in the same message,
+which verdict it picked would be arbitrary. A form post is the one act in this
+flow no prefetcher performs.
 
 `approval-park` is declared `direct({ internal: true })`, and it is the one
 route here that is. It exists to be called by `request-approval` and by
@@ -356,10 +366,12 @@ instructions has no boundary left.
 
 ## Configuration
 
-`.env.schema` is the contract, in [varlock](https://varlock.dev) format: every
-variable, what it is for, whether it is required, and never a value. `env.ts`
-parses the same set at boot, so a misconfigured deployment fails naming the
-variable rather than hours later inside a route.
+`.env.schema` is the contract: every variable, what it is for, whether it is
+required, and never a value. It follows [varlock](https://varlock.dev)
+annotation format, but nothing here runs varlock; the format is a convention
+so that adopting the tool later is an install rather than a rewrite. `env.ts`
+parses the same set at boot with zod, so a misconfigured deployment fails
+naming the variable rather than hours later inside a route.
 `test/env-contract.test.ts` fails the build when the two drift apart.
 
 Ports: approvals on 8080, MCP on 8081, ops on 9090. The application surface

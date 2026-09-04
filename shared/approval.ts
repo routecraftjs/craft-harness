@@ -83,3 +83,44 @@ export function decisionLinks(token: string): {
     denyLink: `${base}/approvals/${encoded}/deny`,
   };
 }
+
+/**
+ * The confirmation page a decision link opens.
+ *
+ * Deliberately plain: no script, no external asset, no styling worth the
+ * name. The page exists to turn a retrieval into a submission, and every
+ * byte beyond that is a byte an approver has to trust. A form post is what
+ * a link scanner does not do; nothing else here is load-bearing.
+ *
+ * The token travels in the form action rather than a hidden field so that
+ * the POST and the GET address the same parked exchange the same way, and
+ * `escapeHtml` is applied because both segments come from the URL.
+ *
+ * @param token The resume token from the link
+ * @param decision `approve` or `deny`, as the link named it
+ */
+export function confirmPage(token: string, decision: string): string {
+  const verdict = decision === "approve" ? "approve" : "deny";
+  const action = `/approvals/${encodeURIComponent(token)}/${verdict}`;
+  return [
+    "<!doctype html>",
+    '<html lang="en"><head><meta charset="utf-8">',
+    "<title>Confirm your decision</title></head><body>",
+    `<h1>Confirm: ${escapeHtml(verdict)}</h1>`,
+    "<p>Your answer is not recorded until you confirm. Nothing has happened yet.</p>",
+    `<form method="post" action="${escapeHtml(action)}">`,
+    `<button type="submit">Confirm ${escapeHtml(verdict)}</button>`,
+    "</form>",
+    "</body></html>",
+  ].join("\n");
+}
+
+/** Escape text for interpolation into HTML. Both page inputs come from a URL. */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
