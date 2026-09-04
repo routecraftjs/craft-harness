@@ -120,3 +120,100 @@ export function turn(
 ): TranscriptTurn {
   return { role, at: new Date().toISOString(), text };
 }
+
+/**
+ * What a caller wants done to one session's transcript.
+ *
+ * Every write is a whole-file rewrite, so a caller that read the file, decided
+ * on the new contents and sent them back would be racing anything that wrote
+ * in between. The caller states the intent instead and the owner performs the
+ * cycle under its lock.
+ */
+export const TranscriptOp = z.discriminatedUnion("op", [
+  z.object({ op: z.literal("read"), session: SessionId }),
+  z.object({
+    op: z.literal("append"),
+    session: SessionId,
+    turns: z.array(TranscriptTurn).min(1),
+  }),
+  z.object({
+    op: z.literal("replace"),
+    session: SessionId,
+    turns: z.array(TranscriptTurn),
+    /**
+     * The turn count the caller compacted. The owner refuses if the file has
+     * moved on, because the caller's replacement was computed from a
+     * conversation that no longer exists and writing it would delete whatever
+     * arrived meanwhile.
+     */
+    expect: z.number().int().nonnegative(),
+  }),
+]);
+export type TranscriptOp = z.infer<typeof TranscriptOp>;
+
+/** What the owner answers, whichever operation was asked for. */
+export interface TranscriptResult {
+  /** The transcript after the operation, which is what is on disk. */
+  turns: TranscriptTurn[];
+  /** How many turns were there before it. */
+  before: number;
+  /** Whether this operation changed the file. */
+  written: boolean;
+  /** Why not, when it did not. Empty when it did. */
+  refused: string;
+}
+
+/** What one operation decides, before any of it is written. */
+export interface TranscriptOutcome extends TranscriptResult {
+  /** The file as it should be after this operation. */
+  keep: TranscriptTurn[];
+}
+
+/**
+ * Decide what one operation does to a transcript, without performing it.
+ *
+ * The refusals live here rather than in `compact` because they are only sound
+ * against the file as it is at the moment of writing. Compact reads, spends a
+ * model call, and comes back to a conversation that may have grown; a check it
+ * made against what it read would pass while destroying what arrived.
+ *
+ * @param op What the caller asked for
+ * @param lines The transcript as read, unparsed
+ */
+export function applyTranscriptOp(
+  op: TranscriptOp,
+  lines: readonly unknown[],
+): TranscriptOutcome {
+  const turns = parseTurns(lines);
+  const before = turns.length;
+  const unchanged = { turns, before, written: false, keep: turns };
+  switch (op.op) {
+    case "read":
+      return { ...unchanged, refused: "" };
+    case "append": {
+      const keep = [...turns, ...op.turns];
+      return { turns: keep, keep, before, written: true, refused: "" };
+    }
+    case "replace": {
+      if (op.expect !== before) {
+        return {
+          ...unchanged,
+          refused: `the transcript moved from ${op.expect} turns to ${before} while this was being computed`,
+        };
+      }
+      if (op.turns.length === 0) {
+        return { ...unchanged, refused: "the replacement is empty" };
+      }
+      if (op.turns.length >= before) {
+        return { ...unchanged, refused: "the replacement is no shorter" };
+      }
+      return {
+        turns: op.turns,
+        keep: op.turns,
+        before,
+        written: true,
+        refused: "",
+      };
+    }
+  }
+}

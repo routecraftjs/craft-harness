@@ -1,14 +1,12 @@
 import { type AgentResult, agent } from "@routecraft/ai";
-import { craft, direct, jsonl, only } from "@routecraft/routecraft";
+import { craft, direct, only } from "@routecraft/routecraft";
 import { z } from "zod";
-import { emptyWhenMissing } from "../../../shared/recover.js";
 import {
   SESSION_HEADER,
   SessionId,
-  type TranscriptTurn,
-  parseTurns,
+  type TranscriptOp,
+  type TranscriptResult,
   renderPrompt,
-  transcriptFileOf,
   turn,
 } from "../../../shared/transcript.js";
 
@@ -29,9 +27,10 @@ import {
  *
  * The transcript is written twice on purpose. The user's turn lands before
  * the model is asked anything, so a dispatch that fails still leaves the
- * question in the file; the answer is appended after. The body carries the
- * conversation while the header carries which conversation it is, which is
- * what lets the file path stay resolvable across the three body rewrites.
+ * question in the file; the answer is appended after. Both writes go through
+ * `transcript-owner`, which holds the file's lock for the whole of each one,
+ * so a compaction running at the same time cannot write back a conversation
+ * that never had this exchange in it.
  *
  * The agent's own definition, its system prompt, tools and skills, is
  * `agents/aria.md`; the body reaching `agent("aria")` is its user message.
@@ -63,24 +62,35 @@ export default craft()
   .input({ body: ChatInput })
   .from<ChatInput>(direct())
   .header(SESSION_HEADER, (exchange) => exchange.body.session)
-  // A session with no file yet is a new conversation, not a failure.
-  .error(emptyWhenMissing)
+  // The owner appends and answers with the conversation as it now stands, so
+  // what the model is shown is what is on disk rather than what this route
+  // believed a moment earlier.
+  .transform((body): TranscriptOp => ({
+    op: "append",
+    session: body.session,
+    turns: [turn("user", body.message)],
+  }))
   .enrich(
-    jsonl({ path: transcriptFileOf }),
-    only((lines: unknown[]) => lines, "lines"),
+    direct<TranscriptOp, TranscriptResult>("transcript-owner"),
+    only((result: TranscriptResult) => result, "result"),
   )
-  .transform((body): TranscriptTurn[] => [
-    ...parseTurns(body.lines),
-    turn("user", body.message),
-  ])
-  .tap(jsonl({ path: transcriptFileOf, createDirs: true }))
-  .transform((turns) =>
-    renderPrompt(turns.slice(0, -1), turns[turns.length - 1]?.text ?? ""),
+  .transform((body) =>
+    renderPrompt(
+      body.result.turns.slice(0, -1),
+      body.result.turns[body.result.turns.length - 1]?.text ?? "",
+    ),
   )
   .enrich(agent("aria"))
-  .transform((result: AgentResult) => turn("assistant", result.text))
-  .tap(jsonl({ path: transcriptFileOf, append: true, createDirs: true }))
-  .transform((answer, exchange): ChatReply => ({
+  .transform((result: AgentResult, exchange): TranscriptOp => ({
+    op: "append",
     session: String(exchange.headers[SESSION_HEADER] ?? ""),
-    reply: answer.text,
+    turns: [turn("assistant", result.text)],
+  }))
+  .enrich(
+    direct<TranscriptOp, TranscriptResult>("transcript-owner"),
+    only((result: TranscriptResult) => result, "result"),
+  )
+  .transform((body, exchange): ChatReply => ({
+    session: String(exchange.headers[SESSION_HEADER] ?? ""),
+    reply: body.result.turns[body.result.turns.length - 1]?.text ?? "",
   }));

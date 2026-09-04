@@ -244,10 +244,38 @@ Nothing is recalled automatically. Recall is a tool the agent chooses to call.
 
 ## Scheduling and the heartbeat
 
-`schedule-task` writes a line to `state/schedules.jsonl`. `scheduler-tick`
-runs on its own cron, takes whatever is due, writes the rest back, and sends
-each due task to `chat`. `list-schedules` and `cancel-schedule` are the rest.
+`schedule-task` adds a task to `state/schedules.jsonl`. `scheduler-tick` runs
+on its own cron, takes whatever is due, writes the rest back, and sends each
+due task to `chat`. `list-schedules` and `cancel-schedule` are the rest.
 Because the file is the state, a task survives a restart.
+
+None of them touches the file. Every one of those operations is a read, a
+change and a whole-file write, and four routes doing that against one path is
+four ways to lose a task: a tick firing while a task is being added writes back
+a file the new task was never in, and neither route fails. So the file has an
+owner. `schedules-owner` performs the whole cycle under `.concurrency({ max: 1
+})`, and everything else states what it wants and submits it there. Transcripts
+work the same way through `transcript-owner`, keyed by session so two
+conversations do not queue behind each other.
+
+The lock is keyed by the file rather than by the caller. Per-route keying would
+give each route its own slot and close nothing, because the race being closed
+is between routes contending for one file.
+
+## State is written before the caller is told
+
+A route that reports work done has done it. That sounds like nothing until you
+know that `.tap()` is detached by contract: the framework runs it on a tracked
+task and the pipeline continues immediately. Every write in this harness used
+one, so `schedule-task` answered before the task was on disk, `memory-save`
+returned `saved: true` before the append, `workspace-write` reported a byte
+count for a file that did not exist yet, and `mail-reply` said `sent: true`
+before the message left. The next read saw the state before the last write, and
+a failed write reached nobody: the agent had already told someone it was done.
+
+Every write is `.to()` now, which the pipeline waits for. This also has to be
+true for the owner routes to mean anything, because a lock can only serialise
+work the route waits for.
 
 `heartbeat` asks the agent on a timer whether anything needs doing. It is
 **off by default**: with `HEARTBEAT_ENABLED` unset the route is registered and
@@ -332,13 +360,24 @@ the dispatch before you do.
 
 ## Compaction
 
-`compact` reads a transcript, asks the model for a shorter version of the same
-conversation with optional steering, validates the result against a schema,
-and writes it back under the same session id. It is a tool the agent can call,
-a command you can run, and a thing `schedule-task` can arrange.
+`compact` reads a transcript, asks the model for a shorter one, and replaces
+the file. It is an ordinary tool: the agent can call it, a person can run it
+with `craft exec`, and `schedule-task` can arrange it for later. Nothing
+compacts automatically, because deciding a conversation has gone on long
+enough is a judgement, not a threshold.
 
-It refuses to write a result that is empty or no shorter than what it
-replaced, because a transcript file has no undo.
+Three rules stand between the model's answer and the file, and all three are
+enforced by `transcript-owner` rather than by `compact`: the result must have
+turns, it must be shorter than what it replaced, and the transcript must still
+hold the same number of turns `compact` read. The last one is why they live
+there. A model call takes seconds, and a turn arriving in that window would be
+erased by a replacement computed before it existed, while a check made in
+`compact` against what `compact` read would have passed. A transcript file has
+no undo.
+
+A session with no transcript is refused before the model is asked. There is no
+conversation to shorten, so the call could only be spent to reach a refusal
+that was knowable for free, which is what a typo in `--session` used to cost.
 
 ## Skills
 

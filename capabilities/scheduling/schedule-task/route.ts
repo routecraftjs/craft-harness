@@ -1,11 +1,10 @@
-import { craft, direct, jsonl, only } from "@routecraft/routecraft";
+import { craft, direct, only } from "@routecraft/routecraft";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { emptyWhenMissing } from "../../../shared/recover.js";
 import {
-  SCHEDULES_FILE,
+  type ScheduleOp,
+  type ScheduleResult,
   type ScheduledTask,
-  parseTasks,
 } from "../../../shared/schedule.js";
 import { SessionId } from "../../../shared/transcript.js";
 
@@ -54,37 +53,30 @@ export default craft()
   .description("Schedule a task for the agent to pick up later.")
   .input({ body: ScheduleTaskInput })
   .from<ScheduleTaskInput>(direct())
-  // No schedules file yet is an empty schedule, not a failure. The recovery
-  // restores the input shape so the merge below reads the same body either
-  // way; returning a bare array would drop the request.
-  .error(emptyWhenMissing)
-  .enrich(
-    jsonl({ path: SCHEDULES_FILE }),
-    only((lines: unknown[]) => lines, "lines"),
-  )
-  .transform((body) => {
+  .transform((body): ScheduleOp => {
     const now = new Date();
     const dueAt =
       body.dueAt ??
       new Date(now.getTime() + (body.inMinutes ?? 0) * 60_000).toISOString();
-    const created: ScheduledTask = {
-      id: randomUUID(),
-      dueAt,
-      task: body.task,
-      session: body.session,
-      createdAt: now.toISOString(),
+    return {
+      op: "add",
+      task: {
+        id: randomUUID(),
+        dueAt,
+        task: body.task,
+        session: body.session,
+        createdAt: now.toISOString(),
+      },
     };
-    // The new task goes last, which is what lets the write below be the
-    // whole file and the step after it recover the one that was created.
-    return [...parseTasks(body.lines), created];
   })
-  // The whole file is rewritten rather than appended to, so add, cancel and
-  // fire are one operation with one shape and cannot interleave into a file
-  // that holds a task twice.
-  .tap(
-    jsonl({
-      path: SCHEDULES_FILE,
-      createDirs: true,
-    }),
+  // The owner performs the read, the append and the write under one lock, so
+  // a tick firing at the same moment cannot write back a file this task was
+  // never in. The task is recovered from the end of what the owner wrote,
+  // which is the same file, not a copy of the one this route sent.
+  .enrich(
+    direct<ScheduleOp, ScheduleResult>("schedules-owner"),
+    only((result: ScheduleResult) => result, "result"),
   )
-  .transform((all) => all[all.length - 1]!);
+  .transform(
+    (body): ScheduledTask => body.result.tasks[body.result.tasks.length - 1]!,
+  );
