@@ -1,38 +1,58 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { jsonl } from "@routecraft/routecraft";
+import { directory, jsonl } from "@routecraft/routecraft";
 import { emptyWhenMissing, noLinesWhenMissing } from "../shared/recover.js";
-import type { Exchange } from "@routecraft/routecraft";
-
-/**
- * The error the jsonl adapter actually throws for a path that is not there.
- *
- * Built by asking the adapter rather than by hand. Hand-built errors are what
- * let the original bug ship: they carried `code: "ENOENT"`, the recovery
- * matched on it, and every test passed while the adapter's own error, which
- * carries no code and no cause, was declined on the first tick of a fresh
- * scaffold.
- */
-async function realAdapterMiss(): Promise<unknown> {
-  const dir = await mkdtemp(join(tmpdir(), "rc-miss-"));
-  const adapter = jsonl({ path: join(dir, "absent.jsonl") }) as unknown as {
-    fetch: (ex: unknown, ctx: unknown) => Promise<unknown>;
-  };
-  try {
-    await adapter.fetch({ headers: {}, body: {} }, {});
-    throw new Error("the adapter did not throw for a missing file");
-  } catch (err) {
-    return err;
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-}
+import type { Enricher, Exchange } from "@routecraft/routecraft";
 
 const exchange = {
   body: { session: "demo", message: "hi" },
 } as unknown as Exchange;
+
+/**
+ * The error an adapter really throws, obtained by making it throw.
+ *
+ * The recovery matches on the adapter's wording, so a stand-in built in the
+ * test would pin the wording this file assumes rather than the wording the
+ * framework emits. `build` populates a scratch directory and returns the path
+ * to read; whatever comes back out is the framework's own error.
+ *
+ * @param adapterFor - Adapter under test, given the path `build` returned
+ * @param build - Populates the scratch directory, returns the path to read
+ * @returns The error the adapter threw
+ */
+async function adapterError(
+  adapterFor: (path: string) => Enricher<unknown, unknown[]>,
+  build: (dir: string) => Promise<string>,
+): Promise<unknown> {
+  const dir = await mkdtemp(join(tmpdir(), "rc-recover-"));
+  let thrown: unknown;
+  let threw = false;
+  try {
+    await adapterFor(await build(dir)).fetch(exchange);
+  } catch (error) {
+    threw = true;
+    thrown = error;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+  if (!threw) throw new Error("the adapter returned instead of throwing");
+  return thrown;
+}
+
+const readJsonl = (path: string) =>
+  jsonl({ path }) as Enricher<unknown, unknown[]>;
+const readDir = (path: string) =>
+  directory({ path }) as unknown as Enricher<unknown, unknown[]>;
+
+function withLine(line: string): (dir: string) => Promise<string> {
+  return async (dir) => {
+    const path = join(dir, "present.jsonl");
+    await writeFile(path, `${line}\n`);
+    return path;
+  };
+}
 
 function missing(): Error & { code: string } {
   return Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" });
@@ -41,7 +61,7 @@ function missing(): Error & { code: string } {
 describe("emptyWhenMissing", () => {
   /**
    * @case A file that is not there yet recovers as an empty one
-   * @preconditions An ENOENT from the jsonl read on a fresh scaffold
+   * @preconditions An ENOENT from a direct node:fs read
    * @expectedResult The input body with empty lines, so the route continues
    */
   test("recovers a missing file as empty", () => {
@@ -54,11 +74,11 @@ describe("emptyWhenMissing", () => {
   });
 
   /**
-   * @case ENOENT wrapped by the adapter is still recognised
-   * @preconditions The framework wraps the driver error on its way out
-   * @expectedResult Recovered, because the cause chain is searched
+   * @case ENOENT carried on the cause chain is still recognised
+   * @preconditions A wrapper error whose cause holds the errno
+   * @expectedResult Recovered, because the chain is walked
    */
-  test("looks through the adapter's wrapping", () => {
+  test("looks through the wrapping", () => {
     const wrapped = new Error("Failed to read file", { cause: missing() });
     expect(emptyWhenMissing(wrapped, exchange)).toMatchObject({ lines: [] });
   });
@@ -87,45 +107,92 @@ describe("emptyWhenMissing", () => {
   });
 });
 
-describe("against the adapter's own error", () => {
+describe("against the adapter's own errors", () => {
   /**
    * @case The recovery recognises what the framework actually throws
-   * @preconditions The error obtained by asking the jsonl adapter to read a
-   *   path that does not exist, not one constructed in the test
-   * @expectedResult Recovered. The adapter maps the errno to a fresh Error
-   *   with no code and no cause, so an errno-only check declines it and the
-   *   first tick of a fresh scaffold fails the boot.
+   * @preconditions The error from asking the jsonl adapter for a path that
+   *   does not exist
+   * @expectedResult Recovered. The adapter throws a bare Error with no code
+   *   and no cause, so an errno-only predicate declines it and the first
+   *   scheduler tick of a fresh scaffold fails the boot.
    */
-  test("recovers the jsonl adapter's missing-file error", async () => {
-    const err = await realAdapterMiss();
-    expect(noLinesWhenMissing(err)).toEqual([]);
-    expect(emptyWhenMissing(err, exchange)).toMatchObject({ lines: [] });
+  test("recovers a missing file", async () => {
+    const error = await adapterError(readJsonl, async (dir) =>
+      join(dir, "absent.jsonl"),
+    );
+    expect(noLinesWhenMissing(error)).toEqual([]);
+    expect(emptyWhenMissing(error, exchange)).toMatchObject({ lines: [] });
   });
 
   /**
-   * @case A permissions failure is still declined
-   * @preconditions The adapter's wording for EACCES, which shares the prefix
-   *   the recovery matches on but not the rest
+   * @case A missing parent directory is the same case
+   * @preconditions A path under a directory that was never created, which is
+   *   state/transcripts/ on a fresh scaffold
+   * @expectedResult Recovered, so the first chat of a new session is a new
+   *   conversation rather than a failure
+   */
+  test("recovers a missing parent directory", async () => {
+    const error = await adapterError(readJsonl, async (dir) =>
+      join(dir, "never-made", "absent.jsonl"),
+    );
+    expect(emptyWhenMissing(error, exchange)).toMatchObject({ lines: [] });
+  });
+
+  /**
+   * @case A missing directory is recognised through the directory adapter
+   * @preconditions The error from asking the directory adapter to scan a path
+   *   that does not exist
+   * @expectedResult Recovered, which is what lets a directory read take these
+   *   handlers without the pattern having to change
+   */
+  test("recovers a missing directory", async () => {
+    const error = await adapterError(readDir, async (dir) => join(dir, "gone"));
+    expect(noLinesWhenMissing(error)).toEqual([]);
+  });
+
+  /**
+   * @case A read that fails for any other reason is declined
+   * @preconditions The adapter pointed at a directory, so the read fails with
+   *   EISDIR and the adapter's generic wording rather than its missing one
    * @expectedResult Declined, so widening the match to the adapter's sentence
    *   did not widen it to every adapter failure
    */
-  test("still declines the adapter's permission error", () => {
+  test("declines a read that fails for another reason", async () => {
+    const error = await adapterError(readJsonl, async (dir) => dir);
+    expect(noLinesWhenMissing(error)).not.toEqual([]);
+    expect(emptyWhenMissing(error, exchange)).not.toMatchObject({ lines: [] });
+  });
+
+  /**
+   * @case A stored line that mentions an errno does not empty the file
+   * @preconditions A transcript whose line is not valid JSON and contains the
+   *   token ENOENT, which the parser quotes back in its message
+   * @expectedResult Declined. Matching the errno as free text would read this
+   *   as a missing file, and chat's first write is a whole-file overwrite, so
+   *   the conversation would be replaced by the message just sent.
+   */
+  test("declines a parse failure that quotes an errno", async () => {
+    const error = await adapterError(
+      readJsonl,
+      withLine("ENOENT: no such file"),
+    );
+    expect(noLinesWhenMissing(error)).not.toEqual([]);
+    expect(emptyWhenMissing(error, exchange)).not.toMatchObject({ lines: [] });
+  });
+
+  /**
+   * @case A permissions failure is declined
+   * @preconditions The adapter's EACCES wording, transcribed rather than
+   *   provoked: the test suite runs as root in CI, and root does not get
+   *   EACCES. The wording is pinned by the sibling cases above, which do come
+   *   from the adapter.
+   * @expectedResult Declined
+   */
+  test("declines the adapter's permission wording", () => {
     const denied = new Error(
       "file adapter: permission denied reading file: /x/y.jsonl",
     );
     expect(noLinesWhenMissing(denied)).not.toEqual([]);
-    expect(emptyWhenMissing(denied, exchange)).not.toMatchObject({ lines: [] });
-  });
-
-  /**
-   * @case A parse failure is still declined
-   * @preconditions The adapter's generic read wording
-   * @expectedResult Declined, because the file exists and rewriting it whole
-   *   from an empty read would destroy it
-   */
-  test("still declines the adapter's generic read error", () => {
-    const broken = new Error("file adapter: failed to read file: bad json");
-    expect(noLinesWhenMissing(broken)).not.toEqual([]);
   });
 });
 
