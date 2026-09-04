@@ -4,7 +4,7 @@ import { recovery, type Exchange } from "@routecraft/routecraft";
  * Recovering a state file that is not there yet, and only that.
  *
  * Every route that reads one of the harness's JSONL state files goes on to
- * rewrite it whole. That makes the breadth of the recovery load-bearing: a
+ * rewrite it whole. That makes the narrowness of the recovery load-bearing: a
  * handler that answered "empty" to any read failure would turn a single
  * unparseable line into a transcript replaced by the message just sent, or a
  * schedule file replaced by the one task just added. Silently, because the
@@ -38,18 +38,39 @@ export function noLinesWhenMissing(error: unknown): unknown {
 }
 
 /**
- * Whether an error is a missing file, looking through the wrapping the file
- * adapter applies on its way out.
+ * What the file adapter says when the path is not there.
+ *
+ * The sentence is the only signal available. `throwFsError` in the framework
+ * maps the errno to a fresh `new Error` with no `code` and no `cause`, so the
+ * ENOENT is gone by the time a route's `.error()` sees it. The pattern is
+ * anchored at the start of the message because the adapter's generic branch
+ * interpolates the driver's own text, and an unanchored match would find this
+ * phrase inside whatever that text happens to contain.
+ *
+ * Delete this when the adapter preserves the errno: the `code` check below
+ * covers the same case on its own. Re-read
+ * `packages/routecraft/src/adapters/shared/fs-errors.ts` on every dependency
+ * bump, because nothing here fails to compile when that wording moves.
+ */
+const ADAPTER_MISS = /^\w+ adapter: (?:file|directory) not found: /;
+
+/**
+ * Whether an error means the file is not there yet.
+ *
+ * Two shapes, because two paths reach here. A direct `node:fs` call carries
+ * `code: "ENOENT"`, at the top of the error or anywhere down its cause chain;
+ * an adapter read carries only the sentence above.
+ *
+ * The errno is never matched as free text. A parse failure quotes the
+ * offending line back in its message, so a transcript holding the token
+ * `ENOENT` would otherwise be read as a missing file and the route would
+ * overwrite the conversation with the one message just sent.
  */
 function isMissingFile(error: unknown, depth = 0): boolean {
   if (error === null || typeof error !== "object" || depth > 4) return false;
   const record = error as Record<string, unknown>;
   if (record["code"] === "ENOENT") return true;
-  if (
-    typeof record["message"] === "string" &&
-    record["message"].includes("ENOENT")
-  ) {
-    return true;
-  }
+  const message = record["message"];
+  if (typeof message === "string" && ADAPTER_MISS.test(message)) return true;
   return isMissingFile(record["cause"], depth + 1);
 }
