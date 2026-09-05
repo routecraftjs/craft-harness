@@ -55,7 +55,8 @@ export default craft()
   // Appended, never replaced: memory that a later save can silently
   // overwrite is memory nobody can trust, and a person pruning the file is
   // the intended way to forget something.
-  .tap(
+  // `.to()`, not `.tap()`: a tap is detached and would answer before the write.
+  .to(
     file({
       path: (exchange) => memoryFile(String(exchange.headers[TOPIC_HEADER])),
       append: true,

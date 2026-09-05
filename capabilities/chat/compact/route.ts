@@ -1,14 +1,13 @@
 import { llm } from "@routecraft/ai";
-import { craft, direct, jsonl, only } from "@routecraft/routecraft";
+import { craft, direct, only } from "@routecraft/routecraft";
 import { z } from "zod";
-import { emptyWhenMissing } from "../../../shared/recover.js";
 import { modelId } from "../../../env.js";
 import {
   SESSION_HEADER,
   SessionId,
+  type TranscriptOp,
+  type TranscriptResult,
   TranscriptTurn,
-  parseTurns,
-  transcriptFileOf,
 } from "../../../shared/transcript.js";
 
 /**
@@ -26,15 +25,24 @@ import {
  *
  * ## What is checked before the write
  *
- * The model is asked for a structured result and the schema is what
- * validates it, so a summary that came back as prose never reaches the
- * file. Two rules on top of that: the result must have turns, and it must
- * not be longer than what it replaced. Both exist because the failure being
- * guarded against is a compaction that silently destroys a conversation,
- * and a transcript file has no undo.
+ * The model is asked for a structured result and the schema is what validates
+ * it, so a summary that came back as prose never reaches the file. The three
+ * rules that decide whether the result may replace the transcript are applied
+ * by `transcript-owner`, not here; `applyTranscriptOp` says why they can only
+ * be sound there.
+ *
+ * A session with nothing in it is refused before the model is asked. It
+ * cannot produce a shorter conversation than no conversation, so the call
+ * would be spent to reach a refusal that was knowable for nothing.
  */
 
 const BEFORE_HEADER = "harness.compact.before";
+
+/**
+ * The body is replaced by the transcript, then by the prompt, then by the
+ * model's answer, so the caller's guidance has to travel outside it.
+ */
+const GUIDANCE_HEADER = "harness.compact.guidance";
 
 export const CompactInput = z.object({
   session: SessionId.describe("Conversation to shorten."),
@@ -69,40 +77,47 @@ export default craft()
   .timeout("2m")
   .from<CompactInput>(direct())
   .header(SESSION_HEADER, (exchange) => exchange.body.session)
-  .error(emptyWhenMissing)
+  .header(GUIDANCE_HEADER, (exchange) => exchange.body.guidance ?? "")
+  .transform((body): TranscriptOp => ({ op: "read", session: body.session }))
   .enrich(
-    jsonl({ path: transcriptFileOf }),
-    only((lines: unknown[]) => lines, "lines"),
+    direct<TranscriptOp, TranscriptResult>("transcript-owner"),
+    only((result: TranscriptResult) => result, "result"),
   )
-  .header(BEFORE_HEADER, (exchange) => parseTurns(exchange.body.lines).length)
-  .transform((body) => {
-    const turns = parseTurns(body.lines);
-    const conversation = turns
+  .header(BEFORE_HEADER, (exchange) => exchange.body.result.before)
+  .filter((exchange) =>
+    exchange.body.result.turns.length > 0
+      ? true
+      : { reason: "there is no conversation under that session to compact" },
+  )
+  .transform((body, exchange) => {
+    const conversation = body.result.turns
       .map((entry) => `[${entry.at}] ${entry.role}: ${entry.text}`)
       .join("\n");
-    return body.guidance === undefined
+    const guidance = String(exchange.headers[GUIDANCE_HEADER] ?? "");
+    return guidance === ""
       ? conversation
-      : `Keep in particular: ${body.guidance}\n\n${conversation}`;
+      : `Keep in particular: ${guidance}\n\n${conversation}`;
   })
   .enrich(llm(modelId, { system: COMPACT_SYSTEM, output: Compacted }))
-  .transform((result) => result.output?.turns ?? [])
-  .filter((exchange) => {
-    const before = Number(exchange.headers[BEFORE_HEADER] ?? 0);
-    if (exchange.body.length === 0) {
-      return {
-        reason: "the model returned no turns; the transcript is left alone",
-      };
-    }
-    if (exchange.body.length >= before) {
-      return {
-        reason: "the result was no shorter; the transcript is left alone",
-      };
-    }
-    return true;
-  })
-  .tap(jsonl({ path: transcriptFileOf, createDirs: true }))
-  .transform((turns, exchange) => ({
+  .transform((result, exchange): TranscriptOp => ({
+    op: "replace",
     session: String(exchange.headers[SESSION_HEADER] ?? ""),
-    before: Number(exchange.headers[BEFORE_HEADER] ?? 0),
-    after: turns.length,
+    turns: result.output?.turns ?? [],
+    expect: Number(exchange.headers[BEFORE_HEADER] ?? 0),
+  }))
+  // The owner decides whether this replacement is still safe to write, against
+  // the file as it is now rather than as it was before the model call.
+  .enrich(
+    direct<TranscriptOp, TranscriptResult>("transcript-owner"),
+    only((result: TranscriptResult) => result, "result"),
+  )
+  .filter((exchange) =>
+    exchange.body.result.written
+      ? true
+      : { reason: exchange.body.result.refused },
+  )
+  .transform((body, exchange) => ({
+    session: String(exchange.headers[SESSION_HEADER] ?? ""),
+    before: body.result.before,
+    after: body.result.turns.length,
   }));

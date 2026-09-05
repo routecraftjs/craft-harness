@@ -70,7 +70,8 @@ export default craft()
   // and the filter chain runs it before any step here.
   .header(PATH_HEADER, (exchange) => exchange.body.path)
   .transform((body) => body.content)
-  .tap(
+  // `.to()`, not `.tap()`: a tap is detached and would answer before the write.
+  .to(
     file({
       path: (exchange) =>
         resolveWritable(String(exchange.headers[PATH_HEADER]))!,

@@ -27,17 +27,6 @@ export function emptyWhenMissing(error: unknown, exchange: Exchange): unknown {
 }
 
 /**
- * The same rule for a route whose body the read replaces outright rather
- * than merging into, which is what a cron-sourced exchange has.
- *
- * @param error - Whatever the read threw
- * @returns An empty line list, or a rethrow directive
- */
-export function noLinesWhenMissing(error: unknown): unknown {
-  return isMissingFile(error) ? ([] as unknown[]) : recovery.rethrow();
-}
-
-/**
  * What the file adapter says when the path is not there.
  *
  * The sentence is the only signal available. `throwFsError` in the framework

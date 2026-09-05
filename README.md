@@ -244,10 +244,51 @@ Nothing is recalled automatically. Recall is a tool the agent chooses to call.
 
 ## Scheduling and the heartbeat
 
-`schedule-task` writes a line to `state/schedules.jsonl`. `scheduler-tick`
-runs on its own cron, takes whatever is due, writes the rest back, and sends
-each due task to `chat`. `list-schedules` and `cancel-schedule` are the rest.
+`schedule-task` adds a task to `state/schedules.jsonl`. `scheduler-tick` runs
+on its own cron, takes whatever is due, writes the rest back, and sends each
+due task to `chat`. `list-schedules` and `cancel-schedule` are the rest.
 Because the file is the state, a task survives a restart.
+
+None of them touches the file. Every one of those operations is a read, a
+change and a whole-file write, and four routes doing that against one path is
+four ways to lose a task: a tick firing while a task is being added writes back
+a file the new task was never in, and neither route fails. So the file has an
+owner. `schedules-owner` performs the whole cycle under `.concurrency({ max: 1
+})`, and everything else states what it wants and submits it there. Transcripts
+work the same way through `transcript-owner`, keyed by session so two
+conversations do not queue behind each other.
+
+The lock is in memory and belongs to one instance, which is what the framework
+offers today. It covers every writer inside a running harness, which is what
+the races above are: routes in one process contending for one file. It does
+not cover two harnesses sharing a working directory, nor a person editing a
+state file by hand while one is running. Neither is a supported way to run
+this, and if you need the first, the state directory is the thing to give each
+instance its own copy of.
+
+Reads change nothing. A read answers from the file and writes nothing back,
+which matters because the parse drops lines the schema rejects: answering
+`list-schedules` by rewriting what it parsed would erase a line somebody
+hand-edited, permanently and without an error.
+
+The lock is keyed by the file rather than by the caller. Per-route keying would
+give each route its own slot and close nothing, because the race being closed
+is between routes contending for one file.
+
+## State is written before the caller is told
+
+A route that reports work done has done it. That sounds like nothing until you
+know that `.tap()` is detached by contract: the framework runs it on a tracked
+task and the pipeline continues immediately. Every write in this harness used
+one, so `schedule-task` answered before the task was on disk, `memory-save`
+returned `saved: true` before the append, `workspace-write` reported a byte
+count for a file that did not exist yet, and `mail-reply` said `sent: true`
+before the message left. The next read saw the state before the last write, and
+a failed write reached nobody: the agent had already told someone it was done.
+
+Every write is `.to()` now, which the pipeline waits for. This also has to be
+true for the owner routes to mean anything, because a lock can only serialise
+work the route waits for.
 
 `heartbeat` asks the agent on a timer whether anything needs doing. It is
 **off by default**: with `HEARTBEAT_ENABLED` unset the route is registered and
@@ -313,14 +354,21 @@ The pages carry `Cache-Control: no-store` and `Referrer-Policy: no-referrer`.
 The URL they are fetched at contains the token, and the token is a bearer
 credential, so it has no business in a shared cache or in a `Referer`.
 
-`approval-park` is declared `direct({ internal: true })`, and it is the one
-route here that is. It exists to be called by `request-approval` and by
-nothing else: it carries no `.authorize()` because its caller does, and its
-answer to any other caller is a suspension acknowledgment nobody asked for.
-Internal keeps the in-process call working exactly as before and closes both
-external doors, so it is absent from `craft exec`, refused by name if someone
-tries, never offered to the agent, and listed as `dispatchable: false`. Every
-other `direct()` route here is a boundary capability and stays open.
+`approval-park` is declared `direct({ internal: true })`. It exists to be
+called by `request-approval` and by nothing else: it carries no `.authorize()`
+because its caller does, and its answer to any other caller is a suspension
+acknowledgment nobody asked for. Internal keeps the in-process call working
+exactly as before and closes both external doors, so it is absent from
+`craft exec`, refused by name if someone tries, never offered to the agent,
+and listed as `dispatchable: false`.
+
+Three routes here are internal: `approval-park` and the two state owners,
+`schedules-owner` and `transcript-owner`. The owners are locks rather than
+capabilities, and the reasoning is the same one: an agent asked to cancel
+something should reach `cancel-schedule`, which validates what it is being
+asked, and the owner trusts its caller precisely because its caller is in this
+process. Every other `direct()` route here is a boundary capability and stays
+open.
 
 ### The security model, plainly
 
@@ -379,13 +427,22 @@ the dispatch before you do.
 
 ## Compaction
 
-`compact` reads a transcript, asks the model for a shorter version of the same
-conversation with optional steering, validates the result against a schema,
-and writes it back under the same session id. It is a tool the agent can call,
-a command you can run, and a thing `schedule-task` can arrange.
+`compact` reads a transcript, asks the model for a shorter one, and replaces
+the file. It is an ordinary tool: the agent can call it, a person can run it
+with `craft exec`, and `schedule-task` can arrange it for later. Nothing
+compacts automatically, because deciding a conversation has gone on long
+enough is a judgement, not a threshold.
 
-It refuses to write a result that is empty or no shorter than what it
-replaced, because a transcript file has no undo.
+Three rules stand between the model's answer and the file: the result must
+have turns, it must be shorter than what it replaced, and the transcript must
+still hold the same number of turns `compact` read. All three are applied by
+`transcript-owner` inside its lock, because a model call takes seconds and a
+turn arriving in that window would otherwise be erased by a replacement
+computed before it existed. A transcript file has no undo.
+
+A session with no transcript is refused before the model is asked. There is no
+conversation to shorten, so the call could only be spent to reach a refusal
+that was knowable for free, which is what a typo in `--session` used to cost.
 
 ## Skills
 

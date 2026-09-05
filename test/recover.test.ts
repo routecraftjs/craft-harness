@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { directory, jsonl } from "@routecraft/routecraft";
-import { emptyWhenMissing, noLinesWhenMissing } from "../shared/recover.js";
+import { emptyWhenMissing } from "../shared/recover.js";
 import type { Enricher, Exchange } from "@routecraft/routecraft";
 
 const exchange = {
@@ -120,7 +120,6 @@ describe("against the adapter's own errors", () => {
     const error = await adapterError(readJsonl, async (dir) =>
       join(dir, "absent.jsonl"),
     );
-    expect(noLinesWhenMissing(error)).toEqual([]);
     expect(emptyWhenMissing(error, exchange)).toMatchObject({ lines: [] });
   });
 
@@ -147,7 +146,7 @@ describe("against the adapter's own errors", () => {
    */
   test("recovers a missing directory", async () => {
     const error = await adapterError(readDir, async (dir) => join(dir, "gone"));
-    expect(noLinesWhenMissing(error)).toEqual([]);
+    expect(emptyWhenMissing(error, exchange)).toMatchObject({ lines: [] });
   });
 
   /**
@@ -159,7 +158,6 @@ describe("against the adapter's own errors", () => {
    */
   test("declines a read that fails for another reason", async () => {
     const error = await adapterError(readJsonl, async (dir) => dir);
-    expect(noLinesWhenMissing(error)).not.toEqual([]);
     expect(emptyWhenMissing(error, exchange)).not.toMatchObject({ lines: [] });
   });
 
@@ -176,7 +174,6 @@ describe("against the adapter's own errors", () => {
       readJsonl,
       withLine("ENOENT: no such file"),
     );
-    expect(noLinesWhenMissing(error)).not.toEqual([]);
     expect(emptyWhenMissing(error, exchange)).not.toMatchObject({ lines: [] });
   });
 
@@ -192,28 +189,6 @@ describe("against the adapter's own errors", () => {
     const denied = new Error(
       "file adapter: permission denied reading file: /x/y.jsonl",
     );
-    expect(noLinesWhenMissing(denied)).not.toEqual([]);
-  });
-});
-
-describe("noLinesWhenMissing", () => {
-  /**
-   * @case A missing schedules file is an empty schedule
-   * @preconditions ENOENT on the tick's read, the fresh-scaffold path
-   * @expectedResult An empty array, so the tick fires nothing and writes nothing
-   */
-  test("recovers a missing file as no lines", () => {
-    expect(noLinesWhenMissing(missing())).toEqual([]);
-  });
-
-  /**
-   * @case Any other failure is declined
-   * @preconditions A truncated final line, which a crash mid-write leaves
-   * @expectedResult A rethrow directive, because the tick rewrites the file
-   *   with whatever survived and would otherwise drop every pending task
-   */
-  test("declines a parse failure rather than dropping every task", () => {
-    const parseError = new SyntaxError("Unexpected end of JSON input");
-    expect(noLinesWhenMissing(parseError)).not.toEqual([]);
+    expect(emptyWhenMissing(denied, exchange)).not.toMatchObject({ lines: [] });
   });
 });

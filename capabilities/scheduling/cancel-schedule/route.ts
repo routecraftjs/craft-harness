@@ -1,7 +1,6 @@
-import { craft, direct, jsonl, only } from "@routecraft/routecraft";
+import { craft, direct, only } from "@routecraft/routecraft";
 import { z } from "zod";
-import { emptyWhenMissing } from "../../../shared/recover.js";
-import { SCHEDULES_FILE, parseTasks } from "../../../shared/schedule.js";
+import type { ScheduleOp, ScheduleResult } from "../../../shared/schedule.js";
 
 /**
  * Drop a scheduled task.
@@ -11,8 +10,6 @@ import { SCHEDULES_FILE, parseTasks } from "../../../shared/schedule.js";
  * not an error: the caller wanted it gone and it is gone, and turning that
  * into a failure only teaches an agent to retry a cancellation.
  */
-
-const CANCELLED_HEADER = "harness.schedule.cancelled";
 
 export const CancelScheduleInput = z.object({
   id: z.string().min(1).describe("Id of the task to cancel."),
@@ -24,24 +21,15 @@ export default craft()
   .description("Cancel a task the agent scheduled earlier.")
   .input({ body: CancelScheduleInput })
   .from<CancelScheduleInput>(direct())
-  // No schedules file yet is an empty schedule, not a failure. The recovery
-  // restores the input shape so the merge below reads the same body either
-  // way; returning a bare array would drop the request.
-  .error(emptyWhenMissing)
+  .transform((body): ScheduleOp => ({ op: "cancel", id: body.id }))
+  // Whether the id was there and the rewrite without it are one operation
+  // under the owner's lock. Read here and written here, they were two, and a
+  // tick landing between them would have put the cancelled task back.
   .enrich(
-    jsonl({ path: SCHEDULES_FILE }),
-    only((lines: unknown[]) => lines, "lines"),
+    direct<ScheduleOp, ScheduleResult>("schedules-owner"),
+    only((result: ScheduleResult) => result, "result"),
   )
-  .header(CANCELLED_HEADER, (exchange) =>
-    parseTasks(exchange.body.lines).some(
-      (task) => task.id === exchange.body.id,
-    ),
-  )
-  .transform((body) =>
-    parseTasks(body.lines).filter((task) => task.id !== body.id),
-  )
-  .tap(jsonl({ path: SCHEDULES_FILE, createDirs: true }))
-  .transform((remaining, exchange) => ({
-    cancelled: exchange.headers[CANCELLED_HEADER] === true,
-    remaining: remaining.length,
+  .transform((body) => ({
+    cancelled: body.result.cancelled,
+    remaining: body.result.tasks.length,
   }));

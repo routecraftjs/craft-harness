@@ -45,5 +45,6 @@ export default craft()
     text: body.text,
     ...(body.inReplyTo === undefined ? {} : { inReplyTo: body.inReplyTo }),
   }))
-  .tap(mail())
+  // `.to()`, not `.tap()`: a tap is detached and would answer before the send.
+  .to(mail())
   .transform((payload) => ({ to: payload.to, sent: true }));
