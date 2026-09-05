@@ -224,6 +224,26 @@ Redirects are re-checked rather than followed: the route asks for
 before taking one further hop. A longer chain is refused. Following a 3xx by
 default would have made the allowlist guard only the first request.
 
+The page is parsed, not pattern-matched. `web-fetch` extracts through the
+framework's `html()`, which is cheerio, rather than the regex pass it used to
+carry. That pass had to strip scripts, styles and comments and decode entities
+itself, and it decoded five of them: a page saying `&rsquo;` or `&mdash;`
+reached the model with the entity still in it.
+
+Extraction is per block (`h1` to `h6`, `p`, `li`, `pre`, `blockquote`, table
+cells and a few others), joined with newlines, rather than taking the whole
+document's text. Cheerio concatenates descendant text with nothing between it,
+so a minified page, which is most of them, comes back as
+`Getting startedInstall the package.` and the model is asked to quote wording
+that was never on the page. A page whose prose sits loose in a `div` matches
+no block and falls back to the whole document, because answering from an empty
+page reads to the caller as the page not covering their question.
+
+`cheerio` is a direct dependency rather than an inherited one. It is an
+optional peer of `@routecraft/routecraft`, and it was only present here by way
+of `@routecraft/cli`, which is a devDependency: a production install would
+have had `html()` fail with `RC5017` at the first fetch.
+
 `web-search` needs `BRAVE_SEARCH_API_KEY`, and refuses at validation without
 it rather than calling an endpoint that would answer 401.
 

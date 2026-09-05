@@ -2,10 +2,12 @@ import { type LlmResult, llm } from "@routecraft/ai";
 import {
   craft,
   direct,
+  html,
   http,
   isRedirect,
   only,
   when,
+  type HtmlResult,
   type HttpResult,
 } from "@routecraft/routecraft";
 import { z } from "zod";
@@ -77,21 +79,47 @@ export const WebFetchInput = z.object({
 });
 export type WebFetchInput = z.infer<typeof WebFetchInput>;
 
-/** Everything between the fetch and the answer, as one readable pass. */
-function extractText(html: string): string {
-  return html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/\s+/g, " ")
+/**
+ * The elements a page keeps its prose in.
+ *
+ * Extracting per block rather than taking the whole document's text is what
+ * keeps word boundaries: cheerio's `.text()` concatenates descendants with
+ * nothing between them, so a minified page, which is most of them, comes back
+ * as "Getting startedInstall the package." One block per match, joined with a
+ * newline, reads the same whether or not the server pretty-printed.
+ *
+ * Deliberately not `div`: divs nest, and each one yields all of its
+ * descendants' text, so including them repeats most of the page once per
+ * level of nesting.
+ */
+export const PROSE =
+  "h1,h2,h3,h4,h5,h6,p,li,pre,blockquote,td,th,figcaption,dt,dd";
+
+/** The body the extraction reads from and writes back into. */
+interface PageBody {
+  url: string;
+  question: string;
+  response: HttpResult;
+  extracted?: HtmlResult;
+}
+
+/** How much of a page the model is shown. */
+const TEXT_LIMIT = 40_000;
+
+/**
+ * The page as text, from whatever the extraction matched.
+ *
+ * `html()` answers an array when the selector matched more than once and a
+ * bare string otherwise, including the empty string when it matched nothing.
+ *
+ * @param extracted What the selector produced
+ */
+export function pageText(extracted: HtmlResult): string {
+  const joined = Array.isArray(extracted) ? extracted.join("\n") : extracted;
+  return joined
+    .replace(/[ \t]+/g, " ")
     .trim()
-    .slice(0, 40_000);
+    .slice(0, TEXT_LIMIT);
 }
 
 const ANSWER_SYSTEM = [
@@ -181,10 +209,43 @@ export default craft()
           ),
     ),
   )
+  // Parsed rather than pattern-matched. The regex this replaces had to strip
+  // scripts, styles and comments and decode entities itself, and every one of
+  // those is a rule a real parser already has. `html()` with no `path` is a
+  // transformer, so it reads and rewrites the body rather than fetching.
+  .transform(
+    html({
+      selector: PROSE,
+      extract: "text",
+      from: (body: PageBody) => String(body.response.body ?? ""),
+      to: (body: PageBody, extracted: HtmlResult) => ({ ...body, extracted }),
+    }),
+  )
+  // A page whose prose sits loose in a div matches nothing above. Falling back
+  // to the whole document costs the block boundaries but beats answering from
+  // an empty page, which reads to the caller as the page not covering their
+  // question.
+  .choice(
+    when(
+      (exchange) => pageText(exchange.body.extracted) === "",
+      (branch) =>
+        branch.transform(
+          html({
+            selector: "body",
+            extract: "text",
+            from: (body: PageBody) => String(body.response.body ?? ""),
+            to: (body: PageBody, extracted: HtmlResult) => ({
+              ...body,
+              extracted,
+            }),
+          }),
+        ),
+    ),
+  )
   .transform((body) => ({
     url: body.url,
     question: body.question,
-    text: extractText(String(body.response.body ?? "")),
+    text: pageText(body.extracted),
   }))
   .enrich(
     llm(modelId, {
