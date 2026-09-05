@@ -35,6 +35,15 @@ export default [
           message:
             "A tap is detached: the route answers before the write lands. Use .to().",
         },
+        // A choice with no matching branch drops the exchange rather than
+        // falling through, so the caller of a request-reply route waits for a
+        // reply nobody will send. The default has to be named.
+        {
+          selector:
+            "CallExpression[callee.property.name='choice']:not(:has(CallExpression[callee.name='otherwise']))",
+          message:
+            "A choice drops what no branch matched. Name the default with otherwise().",
+        },
       ],
     },
   },

@@ -1,13 +1,13 @@
 import { type LlmResult, llm } from "@routecraft/ai";
+import { PROSE, boundedMarkup, extractInto } from "./extract.js";
 import {
   craft,
   direct,
-  html,
   http,
   isRedirect,
   only,
+  otherwise,
   when,
-  type HtmlResult,
   type HttpResult,
 } from "@routecraft/routecraft";
 import { z } from "zod";
@@ -79,58 +79,24 @@ export const WebFetchInput = z.object({
 });
 export type WebFetchInput = z.infer<typeof WebFetchInput>;
 
-/**
- * The elements a page keeps its prose in.
- *
- * Extracting per block rather than taking the whole document's text is what
- * keeps word boundaries: cheerio's `.text()` concatenates descendants with
- * nothing between them, so a minified page, which is most of them, comes back
- * as "Getting startedInstall the package." One block per match, joined with a
- * newline, reads the same whether or not the server pretty-printed.
- *
- * Deliberately not `div`: divs nest, and each one yields all of its
- * descendants' text, so including them repeats most of the page once per
- * level of nesting.
- */
-export const PROSE =
-  "h1,h2,h3,h4,h5,h6,p,li,pre,blockquote,td,th,figcaption,dt,dd";
-
-/** The body the extraction reads from and writes back into. */
-interface PageBody {
-  url: string;
-  question: string;
-  response: HttpResult;
-  extracted?: HtmlResult;
-}
-
-/** How much of a page the model is shown. */
-const TEXT_LIMIT = 40_000;
-
-/**
- * The page as text, from whatever the extraction matched.
- *
- * `html()` answers an array when the selector matched more than once and a
- * bare string otherwise, including the empty string when it matched nothing.
- * An empty answer is what the route's fallback branches on: it re-extracts
- * from the whole document, which loses the block boundaries and beats handing
- * the model an empty page, because that reads to the caller as the page not
- * covering their question.
- *
- * @param extracted What the selector produced
- */
-export function pageText(extracted: HtmlResult): string {
-  const joined = Array.isArray(extracted) ? extracted.join("\n") : extracted;
-  return joined
-    .replace(/[ \t]+/g, " ")
-    .trim()
-    .slice(0, TEXT_LIMIT);
-}
-
 const ANSWER_SYSTEM = [
   "Answer the question using only the page text supplied.",
   "Quote the wording of the page where it settles the question.",
   "If the page does not answer it, say so plainly instead of guessing.",
 ].join(" ");
+
+/**
+ * The body the answering branch reads.
+ *
+ * Restated because `llm()` types its prompt callbacks against
+ * `Exchange<unknown>`, so the body type the builder has tracked this far does
+ * not reach them.
+ */
+type PageText = { url: string; question: string; text: string };
+
+/** What the caller is told when the page carried no readable text. */
+const NO_TEXT =
+  "The page carried no readable text, so the question could not be answered from it.";
 
 /** Where the resolved redirect target rides between the filter and the hop. */
 const REDIRECT_HEADER = "harness.fetch.redirect";
@@ -212,55 +178,53 @@ export default craft()
             only((response: HttpResult) => response, "response"),
           ),
     ),
+    // A choice with no matching branch drops the exchange, so the ordinary
+    // case, a 200 that needs no hop, needs a branch of its own to survive.
+    otherwise((branch) => branch),
   )
-  // `html()` with no `path` is a transformer: it rewrites the body, not fetches.
-  .transform(
-    html({
-      selector: PROSE,
-      extract: "text",
-      from: (body: PageBody) => String(body.response.body ?? ""),
-      to: (body: PageBody, extracted: HtmlResult) => ({ ...body, extracted }),
-    }),
-  )
-  // Nothing matched means prose loose in a div; see pageText for the trade.
+  .transform((body) => ({
+    url: body.url,
+    question: body.question,
+    markup: boundedMarkup(body.response),
+  }))
+  .transform(extractInto(PROSE))
+  // A page whose prose sits loose in divs matches no block. The whole
+  // document loses the boundaries PROSE exists to keep, and beats handing the
+  // model an empty page, which reads to the caller as the page not covering
+  // their question.
   .choice(
     when(
-      (exchange) => pageText(exchange.body.extracted) === "",
-      (branch) =>
-        branch.transform(
-          html({
-            selector: "body",
-            extract: "text",
-            from: (body: PageBody) => String(body.response.body ?? ""),
-            to: (body: PageBody, extracted: HtmlResult) => ({
-              ...body,
-              extracted,
-            }),
-          }),
-        ),
+      (exchange) => exchange.body.text === "" && exchange.body.markup !== "",
+      (branch) => branch.transform(extractInto("body")),
     ),
+    otherwise((branch) => branch),
   )
-  .transform((body) => ({
-    url: body.url,
-    question: body.question,
-    text: pageText(body.extracted),
-  }))
-  .enrich(
-    llm(modelId, {
-      system: ANSWER_SYSTEM,
-      user: (exchange) => {
-        const body = exchange.body as {
-          question: string;
-          url: string;
-          text: string;
-        };
-        return `Question: ${body.question}\n\nPage (${body.url}):\n\n${body.text}`;
-      },
-    }),
-    only((result: LlmResult) => result.text, "answer"),
-  )
-  .transform((body) => ({
-    url: body.url,
-    question: body.question,
-    answer: body.answer,
-  }));
+  .choice(
+    when(
+      (exchange) => exchange.body.text !== "",
+      (branch) =>
+        branch
+          .enrich(
+            llm(modelId, {
+              system: ANSWER_SYSTEM,
+              user: (exchange) => {
+                const body = exchange.body as PageText;
+                return `Question: ${body.question}\n\nPage (${body.url}):\n\n${body.text}`;
+              },
+            }),
+            only((result: LlmResult) => result.text, "answer"),
+          )
+          .transform((body) => ({
+            url: body.url,
+            question: body.question,
+            answer: body.answer,
+          })),
+    ),
+    otherwise((branch) =>
+      branch.transform((body) => ({
+        url: body.url,
+        question: body.question,
+        answer: NO_TEXT,
+      })),
+    ),
+  );

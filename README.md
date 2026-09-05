@@ -237,6 +237,21 @@ that was never on the page. A page whose prose sits loose in a `div` matches
 no block and falls back to the whole document, because answering from an empty
 page reads to the caller as the page not covering their question.
 
+Two caps bound what a page can cost. Only the first 500KB of markup is parsed
+at all, because cheerio parses synchronously: a body at the 4MB fetch ceiling
+holds the event loop for the whole harness rather than just that exchange, and
+the route's own `.timeout()` is not noticed until the parse has finished. The
+extracted text is then cut to 40,000 characters, so one enormous page cannot
+become the whole context window. A page that yields no text at all is answered
+as such rather than sent to the model, which would otherwise answer from an
+empty prompt and read as the page not covering the question.
+
+One caveat worth knowing before pointing this at code documentation: the
+framework strips anything tag-shaped from extracted text after the parser has
+already decoded entities, so an escaped code sample loses part of itself
+(`Array&lt;string&gt;` arrives as `Array`). That is `html()`'s behaviour, not
+this repository's.
+
 `cheerio` is a direct dependency rather than an inherited one. It is an
 optional peer of `@routecraft/routecraft`, and it was only present here by way
 of `@routecraft/cli`, which is a devDependency: a production install would
