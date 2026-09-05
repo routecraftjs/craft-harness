@@ -1,10 +1,12 @@
 import { type LlmResult, llm } from "@routecraft/ai";
+import { PROSE, boundedMarkup, extractInto } from "./extract.js";
 import {
   craft,
   direct,
   http,
   isRedirect,
   only,
+  otherwise,
   when,
   type HttpResult,
 } from "@routecraft/routecraft";
@@ -77,28 +79,24 @@ export const WebFetchInput = z.object({
 });
 export type WebFetchInput = z.infer<typeof WebFetchInput>;
 
-/** Everything between the fetch and the answer, as one readable pass. */
-function extractText(html: string): string {
-  return html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 40_000);
-}
-
 const ANSWER_SYSTEM = [
   "Answer the question using only the page text supplied.",
   "Quote the wording of the page where it settles the question.",
   "If the page does not answer it, say so plainly instead of guessing.",
 ].join(" ");
+
+/**
+ * The body the answering branch reads.
+ *
+ * Restated because `llm()` types its prompt callbacks against
+ * `Exchange<unknown>`, so the body type the builder has tracked this far does
+ * not reach them.
+ */
+type PageText = { url: string; question: string; text: string };
+
+/** What the caller is told when the page carried no readable text. */
+const NO_TEXT =
+  "The page carried no readable text, so the question could not be answered from it.";
 
 /** Where the resolved redirect target rides between the filter and the hop. */
 const REDIRECT_HEADER = "harness.fetch.redirect";
@@ -180,28 +178,53 @@ export default craft()
             only((response: HttpResult) => response, "response"),
           ),
     ),
+    // A choice with no matching branch drops the exchange, so the ordinary
+    // case, a 200 that needs no hop, needs a branch of its own to survive.
+    otherwise((branch) => branch),
   )
   .transform((body) => ({
     url: body.url,
     question: body.question,
-    text: extractText(String(body.response.body ?? "")),
+    markup: boundedMarkup(body.response),
   }))
-  .enrich(
-    llm(modelId, {
-      system: ANSWER_SYSTEM,
-      user: (exchange) => {
-        const body = exchange.body as {
-          question: string;
-          url: string;
-          text: string;
-        };
-        return `Question: ${body.question}\n\nPage (${body.url}):\n\n${body.text}`;
-      },
-    }),
-    only((result: LlmResult) => result.text, "answer"),
+  .transform(extractInto(PROSE))
+  // A page whose prose sits loose in divs matches no block. The whole
+  // document loses the boundaries PROSE exists to keep, and beats handing the
+  // model an empty page, which reads to the caller as the page not covering
+  // their question.
+  .choice(
+    when(
+      (exchange) => exchange.body.text === "" && exchange.body.markup !== "",
+      (branch) => branch.transform(extractInto("body")),
+    ),
+    otherwise((branch) => branch),
   )
-  .transform((body) => ({
-    url: body.url,
-    question: body.question,
-    answer: body.answer,
-  }));
+  .choice(
+    when(
+      (exchange) => exchange.body.text !== "",
+      (branch) =>
+        branch
+          .enrich(
+            llm(modelId, {
+              system: ANSWER_SYSTEM,
+              user: (exchange) => {
+                const body = exchange.body as PageText;
+                return `Question: ${body.question}\n\nPage (${body.url}):\n\n${body.text}`;
+              },
+            }),
+            only((result: LlmResult) => result.text, "answer"),
+          )
+          .transform((body) => ({
+            url: body.url,
+            question: body.question,
+            answer: body.answer,
+          })),
+    ),
+    otherwise((branch) =>
+      branch.transform((body) => ({
+        url: body.url,
+        question: body.question,
+        answer: NO_TEXT,
+      })),
+    ),
+  );

@@ -24,6 +24,7 @@
     "@routecraft/os": "0.7.0-canary-20260828101012",
     "@routecraft/routecraft": "0.7.0-canary-20260829135343",
     "ai": "^6.0.0",
+    "cheerio": "^1.2.0",
     "croner": "^10.0.1",
     "yaml": "^2.8.0",
     "zod": "^4.4.3"
