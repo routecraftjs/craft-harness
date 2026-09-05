@@ -224,11 +224,9 @@ Redirects are re-checked rather than followed: the route asks for
 before taking one further hop. A longer chain is refused. Following a 3xx by
 default would have made the allowlist guard only the first request.
 
-The page is parsed, not pattern-matched. `web-fetch` extracts through the
-framework's `html()`, which is cheerio, rather than the regex pass it used to
-carry. That pass had to strip scripts, styles and comments and decode entities
-itself, and it decoded five of them: a page saying `&rsquo;` or `&mdash;`
-reached the model with the entity still in it.
+The page is parsed rather than pattern-matched. `web-fetch` extracts through
+the framework's `html()`, which is cheerio, so entity decoding and dropping
+script and style content are the parser's rules rather than this repository's.
 
 Extraction is per block (`h1` to `h6`, `p`, `li`, `pre`, `blockquote`, table
 cells and a few others), joined with newlines, rather than taking the whole

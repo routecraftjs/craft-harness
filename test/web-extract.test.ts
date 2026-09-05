@@ -19,9 +19,8 @@ const MINIFIED =
 /**
  * What the model is shown of a page.
  *
- * The regex this replaced stripped scripts, styles and comments and decoded
- * entities by hand. A parser has all of those rules already; what a parser
- * does NOT have for free is word boundaries, which is what these pin.
+ * Entity decoding and dropping script and style content come free with a
+ * parser. Word boundaries between blocks do not, and they are what these pin.
  */
 describe("web-fetch extraction", () => {
   /**

@@ -111,6 +111,10 @@ const TEXT_LIMIT = 40_000;
  *
  * `html()` answers an array when the selector matched more than once and a
  * bare string otherwise, including the empty string when it matched nothing.
+ * An empty answer is what the route's fallback branches on: it re-extracts
+ * from the whole document, which loses the block boundaries and beats handing
+ * the model an empty page, because that reads to the caller as the page not
+ * covering their question.
  *
  * @param extracted What the selector produced
  */
@@ -209,10 +213,7 @@ export default craft()
           ),
     ),
   )
-  // Parsed rather than pattern-matched. The regex this replaces had to strip
-  // scripts, styles and comments and decode entities itself, and every one of
-  // those is a rule a real parser already has. `html()` with no `path` is a
-  // transformer, so it reads and rewrites the body rather than fetching.
+  // `html()` with no `path` is a transformer: it rewrites the body, not fetches.
   .transform(
     html({
       selector: PROSE,
@@ -221,10 +222,7 @@ export default craft()
       to: (body: PageBody, extracted: HtmlResult) => ({ ...body, extracted }),
     }),
   )
-  // A page whose prose sits loose in a div matches nothing above. Falling back
-  // to the whole document costs the block boundaries but beats answering from
-  // an empty page, which reads to the caller as the page not covering their
-  // question.
+  // Nothing matched means prose loose in a div; see pageText for the trade.
   .choice(
     when(
       (exchange) => pageText(exchange.body.extracted) === "",
