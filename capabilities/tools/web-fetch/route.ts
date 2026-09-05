@@ -1,5 +1,5 @@
 import { type LlmResult, llm } from "@routecraft/ai";
-import { PROSE, boundedMarkup, extractInto } from "./extract.js";
+import { BODY_LIMIT, PROSE, boundedMarkup, extractInto } from "./extract.js";
 import {
   craft,
   direct,
@@ -146,7 +146,7 @@ export default craft()
     http({
       url: (exchange: { body: WebFetchInput }) => exchange.body.url,
       redirect: "manual",
-      maxBodySize: 4_000_000,
+      maxBodySize: BODY_LIMIT,
       timeout: "15s",
     }),
     only((response: HttpResult) => response, "response"),
@@ -172,7 +172,7 @@ export default craft()
               // The second hop is the last one. A 3xx here fails rather than
               // being followed, so the allowlist covers every request made.
               redirect: "error",
-              maxBodySize: 4_000_000,
+              maxBodySize: BODY_LIMIT,
               timeout: "15s",
             }),
             only((response: HttpResult) => response, "response"),
@@ -195,7 +195,7 @@ export default craft()
   .choice(
     when(
       (exchange) => exchange.body.text === "" && exchange.body.markup !== "",
-      (branch) => branch.transform(extractInto("body")),
+      (branch) => branch.transform(extractInto("body", { collapse: true })),
     ),
     otherwise((branch) => branch),
   )

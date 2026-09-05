@@ -120,6 +120,35 @@ describe("web-fetch extraction", () => {
   });
 
   /**
+   * @case A code sample keeps the markup the page escaped
+   * @preconditions A `<pre>` whose content is escaped markup, the shape every
+   *   documentation page uses for a generic or an HTML example
+   * @expectedResult The markup survives. The parser used to strip anything
+   *   tag-shaped after it had already decoded the entities, which deleted the
+   *   only thing the escaping existed to carry.
+   */
+  test("escaped markup survives extraction", async () => {
+    const page = `<body><pre>type X = Array&lt;string&gt;;</pre></body>`;
+    expect(joinBlocks(await extract(page, PROSE))).toBe(
+      "type X = Array<string>;",
+    );
+  });
+
+  /**
+   * @case A code sample keeps its line breaks and indentation
+   * @preconditions A `<pre>` holding indented multi-line source
+   * @expectedResult The lines and their indentation arrive intact. Collapsing
+   *   whitespace puts the sample back on one line, which loses the structure
+   *   for any language and the meaning for an indentation-sensitive one.
+   */
+  test("multi-line code keeps its shape", async () => {
+    const page = `<body><pre>def f(x):\n    if x:\n        return 1\n</pre></body>`;
+    expect(joinBlocks(await extract(page, PROSE))).toBe(
+      "def f(x):\n    if x:\n        return 1",
+    );
+  });
+
+  /**
    * @case Empty blocks do not spend the budget
    * @preconditions A page of empty and whitespace-only cells around one line
    *   of prose, the shape of a layout table
@@ -132,6 +161,26 @@ describe("web-fetch extraction", () => {
       `<body><table><tr><td></td><td>   </td><td>The answer</td>` +
       `<td>\n\t</td></tr></table></body>`;
     expect(joinBlocks(await extract(table, PROSE))).toBe("The answer");
+  });
+
+  /**
+   * @case The whole-document fallback does not spend its budget on the page's
+   *   own indentation
+   * @preconditions A pretty-printed page whose prose sits loose in divs, so
+   *   PROSE matches nothing and the route falls back to the whole document
+   * @expectedResult The prose, with the source's inter-tag whitespace gone.
+   *   PROSE already claims `pre`, so a page that reaches the fallback has no
+   *   code sample to protect, and leaving the whitespace in costs it four
+   *   fifths of the text the model is shown.
+   */
+  test("the fallback collapses the page's own whitespace", async () => {
+    const loose =
+      `<body>\n  <div>\n    <span>Getting started</span>\n` +
+      `    <div>\n      <span>Install it.</span>\n    </div>\n  </div>\n</body>`;
+    expect(joinBlocks(await extract(loose, PROSE))).toBe("");
+    expect(joinBlocks(await extract(loose, "body"), true)).toBe(
+      "Getting started Install it.",
+    );
   });
 
   /**

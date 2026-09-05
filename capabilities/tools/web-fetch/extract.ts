@@ -31,6 +31,15 @@ import {
 export const PROSE =
   "h1,h2,h3,h4,h5,h6,p,li,pre,blockquote,td,th,figcaption,dt,dd";
 
+/**
+ * How much of a response is fetched at all.
+ *
+ * The top rung of the ladder {@link HTML_LIMIT} and {@link TEXT_LIMIT}
+ * continue. Both hops share it: a redirect that could pull a larger body than
+ * the first request was allowed would be a way around the bound.
+ */
+export const BODY_LIMIT = 4_000_000;
+
 /** How much of a page the model is shown. */
 export const TEXT_LIMIT = 40_000;
 
@@ -84,15 +93,23 @@ export function boundedMarkup(response: HttpResult): string {
  * composes everything else and the exchange keeps flowing. Both the prose
  * pass and the whole-document fallback are the same step with a different
  * selector, which is what keeps them from drifting apart.
+ *
+ * `collapse` is for the fallback. {@link PROSE} already claims `pre`, so a
+ * page that reaches the whole document has no code sample to protect and
+ * nothing but the page's own inter-tag whitespace to lose.
  */
 export function extractInto<T extends { markup: string }>(
   selector: string,
+  options: { collapse?: boolean } = {},
 ): Transformer<T, T & { text: string }> {
   return html<T, T & { text: string }>({
     selector,
     extract: "text",
     from: (body) => body.markup,
-    to: (body, result) => ({ ...body, text: joinBlocks(result) }),
+    to: (body, result) => ({
+      ...body,
+      text: joinBlocks(result, options.collapse ?? false),
+    }),
   });
 }
 
@@ -101,15 +118,31 @@ export function extractInto<T extends { markup: string }>(
  *
  * `html()` answers an array when the selector matched more than once, a bare
  * string when it matched exactly once, and the empty string when it matched
- * nothing. Empty and whitespace-only matches are dropped rather than joined:
- * a page of empty table cells would otherwise spend the whole
- * {@link TEXT_LIMIT} budget on blank lines.
+ * nothing.
+ *
+ * Blank lines and trailing whitespace go, leading whitespace stays. That is
+ * what keeps a `pre` block's line breaks and indentation, which is most of
+ * what a code sample means. Collapsing instead is right only where there is
+ * no structure to keep, which is the whole-document fallback: four fifths of
+ * what `body` yields on a pretty-printed page is the source's own indentation,
+ * and left alone it spends the {@link TEXT_LIMIT} budget the fallback exists
+ * to fill.
  */
-export function joinBlocks(extracted: HtmlResult): string {
+export function joinBlocks(extracted: HtmlResult, collapse = false): string {
   const parts = Array.isArray(extracted) ? extracted : [extracted];
   return parts
-    .map((part) => part.replace(/\s+/g, " ").trim())
+    .map((part) => (collapse ? part.replace(/\s+/g, " ") : squeezeLines(part)))
+    .map((part) => part.trim())
     .filter((part) => part !== "")
     .join("\n")
     .slice(0, TEXT_LIMIT);
+}
+
+/** Drop blank lines and trailing whitespace, keep indentation. */
+function squeezeLines(part: string): string {
+  return part
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter((line) => line !== "")
+    .join("\n");
 }
