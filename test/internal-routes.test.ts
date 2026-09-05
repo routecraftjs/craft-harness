@@ -2,6 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { testContext, type TestContext } from "@routecraft/testing";
 import approvalPark from "../capabilities/approvals/approval-park/route.js";
 import requestApproval from "../capabilities/approvals/request-approval/route.js";
+import schedulesOwner from "../capabilities/scheduling/schedules-owner/route.js";
+import scheduleTask from "../capabilities/scheduling/schedule-task/route.js";
+import transcriptOwner from "../capabilities/chat/transcript-owner/route.js";
 
 /**
  * The one route in this harness that exists to be called by another route.
@@ -70,5 +73,26 @@ describe("internal routes", () => {
 
     expect(parked.status).toBe("suspended");
     expect(typeof parked.token).toBe("string");
+  });
+
+  /**
+   * @case The state owners are absent from the capability surface too
+   * @preconditions A context holding both owners and a route that submits to
+   *   one of them
+   * @expectedResult Only the submitting capability is discoverable. An owner
+   *   is a lock, not a capability: an agent asked to schedule something should
+   *   reach `schedule-task`, which validates what it is being asked, and the
+   *   owner trusts its caller precisely because its caller is in this process.
+   */
+  test("keep the state owners off the capability surface", async () => {
+    t = await testContext()
+      .routes([schedulesOwner, scheduleTask, transcriptOwner])
+      .build();
+    await t.startAndWaitReady();
+
+    const endpoints = t.ctx.capabilities().map((c) => c.endpoint);
+    expect(endpoints).toContain("schedule-task");
+    expect(endpoints).not.toContain("schedules-owner");
+    expect(endpoints).not.toContain("transcript-owner");
   });
 });

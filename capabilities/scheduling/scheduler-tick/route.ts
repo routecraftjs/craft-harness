@@ -1,14 +1,8 @@
-import { craft, cron, jsonl, log } from "@routecraft/routecraft";
+import { craft, cron, log } from "@routecraft/routecraft";
 import { direct } from "@routecraft/routecraft";
 import { env } from "../../../env.js";
-import { noLinesWhenMissing } from "../../../shared/recover.js";
 import type { ChatInput } from "../../chat/chat/route.js";
-import {
-  SCHEDULES_FILE,
-  type ScheduledTask,
-  isDue,
-  parseTasks,
-} from "../../../shared/schedule.js";
+import type { ScheduleOp, ScheduleResult } from "../../../shared/schedule.js";
 
 /**
  * The only thing in the harness that fires a schedule.
@@ -25,40 +19,26 @@ import {
  * that does not involve a model.
  *
  * Due tasks are removed from the file BEFORE they are dispatched, so a slow
- * dispatch cannot be fired twice by the next tick. The rewrite runs as a
- * multicast path, which is isolated from the main flow: a failed rewrite
- * leaves the task in the file and it fires again next tick. At-least-once is
- * the right trade for a reminder, and the alternative (drop it and hope) is
- * not.
+ * dispatch cannot be fired twice by the next tick. Taking them and writing
+ * back what is left is one operation inside `schedules-owner`, so a task
+ * added while this tick is running is in the file the owner writes rather
+ * than erased by it. A failed write means nothing was taken and the task
+ * fires next tick: at-least-once is the right trade for a reminder, and the
+ * alternative, dropping it and hoping, is not.
  */
 export default craft()
   .id("scheduler-tick")
   .description("Fire scheduled tasks that have come due.")
   .from(cron(env.SCHEDULER_CRON))
-  // No schedules file yet is an empty schedule, not a failure. This is the
-  // path a fresh scaffold takes on every tick. Any other read failure is
-  // declined: the write below replaces the file with what survived the tick.
-  .error(noLinesWhenMissing)
-  // A bare enrich, not `only()`: a cron exchange has no body to merge into,
-  // so the lines replace it and the transform below reads them directly.
-  .enrich(jsonl({ path: SCHEDULES_FILE }))
-  .transform((lines: unknown[]) => {
-    const now = new Date();
-    const tasks = parseTasks(lines);
-    return {
-      due: tasks.filter((task) => isDue(task, now)),
-      pending: tasks.filter((task) => !isDue(task, now)),
-    };
-  })
+  .transform((): ScheduleOp => ({
+    op: "takeDue",
+    now: new Date().toISOString(),
+  }))
+  .enrich(direct<ScheduleOp, ScheduleResult>("schedules-owner"))
   .filter((exchange) =>
     exchange.body.due.length > 0 ? true : { reason: "nothing due" },
   )
-  .multicast((path) =>
-    path
-      .transform((body): ScheduledTask[] => body.pending)
-      .to(jsonl({ path: SCHEDULES_FILE, createDirs: true })),
-  )
-  .transform((body) => body.due)
+  .transform((result) => result.due)
   .split()
   .transform((task): ChatInput => ({
     session: task.session,
