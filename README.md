@@ -264,7 +264,54 @@ the same links are also mailed to the approver.
 The parked half is `approval-park`, which suspends with a 30 minute TTL. Its
 continuation runs when someone answers, possibly days later and certainly in a
 different process, and posts the verdict back into the conversation that asked.
-`approval-callback` is the one endpoint both links open.
+Both links open `approval-confirm`, which renders the verdict and a form and
+resolves nothing. The token is spent only by `approval-callback`, which is
+POST-only and reached only by submitting that form.
+
+That split is not ceremony. The links travel by mail and in the agent's reply,
+and both are read by machines before a human sees them: Safe Links, Proofpoint,
+the Gmail proxy, antivirus scanners and chat unfurlers all issue a GET on every
+link they find. An endpoint that resolved on retrieval would be resolved by
+whichever scanner arrived first, and since both links sit in the same message,
+which verdict it picked would be arbitrary. A form post is not something a
+client that only retrieves will do.
+
+It stops prefetching, not automated interaction. A detonation sandbox or
+browser-isolation proxy that renders the page and clicks the button gets
+through, and a nonce would not help because a renderer carries it too. The
+only thing that upgrades this flow from "holder of a link" to "this person" is
+a validator on the `approvals` mount, at which point the callback's authorize
+hook starts demanding a verified approver.
+
+The page names the verdict, not the request. Reading a parked exchange by
+token needs `suspensionIdFor` and the configured store, and the framework
+exports neither to a route, so an approver arriving cold has to recognise
+which request they are answering from the mail that carried the link. Two
+pending approvals are therefore told apart by their mail, not by the page.
+Closing that needs a framework change and is filed, not fixed here.
+
+A path segment this harness did not mint is refused with a 400 and a page
+saying so. Folding an unrecognised verdict to `deny` would render a working
+deny button for a link the system never issued, so a mangled URL would record
+a denial nobody made.
+
+An answer that cannot land gets the same treatment. A link opened after the
+TTL, or one already spent, or one the resume hook refuses, all reach a 400 and
+one sentence: nothing changed, ask for a new link. They are deliberately not
+told apart, because the difference is the record's lifecycle and this mount
+demands no credential. Without that arm the resume throws and the dispatcher
+answers `{"error":"internal server error"}`, which is what an approver reading
+their mail an hour late would otherwise see. The confirmation page says up
+front how long the link lives, so the wait is a known one.
+
+Both doors throttle per token rather than per route. A single bucket for the
+whole route would let any anonymous caller spend the minute on tokens nobody
+minted and have every genuine approver rejected, which is an approval gate
+held shut by a stranger for the cost of one request every two seconds.
+
+The pages carry `Cache-Control: no-store` and `Referrer-Policy: no-referrer`.
+The URL they are fetched at contains the token, and the token is a bearer
+credential, so it has no business in a shared cache or in a `Referer`.
 
 `approval-park` is declared `direct({ internal: true })`, and it is the one
 route here that is. It exists to be called by `request-approval` and by
@@ -356,10 +403,12 @@ instructions has no boundary left.
 
 ## Configuration
 
-`.env.schema` is the contract, in [varlock](https://varlock.dev) format: every
-variable, what it is for, whether it is required, and never a value. `env.ts`
-parses the same set at boot, so a misconfigured deployment fails naming the
-variable rather than hours later inside a route.
+`.env.schema` is the contract: every variable, what it is for, whether it is
+required, and never a value. It follows [varlock](https://varlock.dev)
+annotation format, but nothing here runs varlock; the format is a convention
+so that adopting the tool later is an install rather than a rewrite. `env.ts`
+parses the same set at boot with zod, so a misconfigured deployment fails
+naming the variable rather than hours later inside a route.
 `test/env-contract.test.ts` fails the build when the two drift apart.
 
 Ports: approvals on 8080, MCP on 8081, ops on 9090. The application surface

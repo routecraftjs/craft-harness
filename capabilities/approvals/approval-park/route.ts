@@ -1,6 +1,7 @@
 import { craft, direct, log } from "@routecraft/routecraft";
 import type { ChatInput } from "../../chat/chat/route.js";
 import {
+  APPROVAL_TTL,
   ApprovalDecision,
   ApprovalRequest,
   mayApprove,
@@ -50,9 +51,7 @@ export default craft()
   .from<ApprovalRequest>(direct({ internal: true }))
   .suspend({
     schema: ApprovalDecision,
-    // Short because the link is a bearer credential. A request nobody
-    // answers within half an hour is better re-asked than left live.
-    ttl: "30m",
+    ttl: APPROVAL_TTL.duration,
     // Site policy, not request policy. `approval-callback` reads it to
     // decide whether to let the resume through at all.
     meta: { requires: "configured-approver" },
