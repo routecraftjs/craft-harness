@@ -246,11 +246,10 @@ become the whole context window. A page that yields no text at all is answered
 as such rather than sent to the model, which would otherwise answer from an
 empty prompt and read as the page not covering the question.
 
-One caveat worth knowing before pointing this at code documentation: the
-framework strips anything tag-shaped from extracted text after the parser has
-already decoded entities, so an escaped code sample loses part of itself
-(`Array&lt;string&gt;` arrives as `Array`). That is `html()`'s behaviour, not
-this repository's.
+Code documentation survives the trip. An escaped sample keeps its markup
+(`Array&lt;string&gt;` arrives as `Array<string>`), and a `<pre>` keeps its
+line breaks and indentation, because whitespace inside a block is left as the
+page had it and only the ends are trimmed.
 
 `cheerio` is a direct dependency rather than an inherited one. It is an
 optional peer of `@routecraft/routecraft`, and it was only present here by way
