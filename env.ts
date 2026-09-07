@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFAULT_PORTS } from "./shared/defaults.js";
 
 /**
  * The project's environment contract, parsed once at import.
@@ -109,8 +110,12 @@ const envSchema = z.object({
 
   // The human-facing surface: an approval link someone opens from their mail
   // client, so it takes the conventional application port.
-  HTTP_PORT: z.coerce.number().int().positive().default(8080),
-  MCP_PORT: z.coerce.number().int().positive().default(8081),
+  HTTP_PORT: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_PORTS.approvals),
+  MCP_PORT: z.coerce.number().int().positive().default(DEFAULT_PORTS.mcp),
   // Also the MCP resource identifier (RFC 9728), which the transport requires
   // outside development and test. It must be the URL a client actually
   // reaches, so a deployment behind a proxy sets its public address here.
@@ -118,11 +123,11 @@ const envSchema = z.object({
   // The editor's door. A fourth listener rather than a share of the MCP one:
   // this project separates surfaces by purpose so a firewall rule can, and
   // two protocols behind one port removes that.
-  ACP_PORT: z.coerce.number().int().positive().default(8082),
+  ACP_PORT: z.coerce.number().int().positive().default(DEFAULT_PORTS.editor),
   // Management, kept off the application port. `craft exec` looks at 8080 by
   // default, but `bun run setup` writes the real url into
   // `.routecraft/settings.yaml`, so the CLI never needs the default or a flag.
-  OPS_PORT: z.coerce.number().int().positive().default(9090),
+  OPS_PORT: z.coerce.number().int().positive().default(DEFAULT_PORTS.ops),
 
   MAIL_ADDRESS: z.union([z.email(), z.literal("")]).default(""),
   MAIL_APP_PASSWORD: z.string().default(""),

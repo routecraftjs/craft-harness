@@ -1,35 +1,45 @@
 import { describe, expect, test } from "bun:test";
-import { bootServer } from "@routecraft/testing";
-import { craftConfig } from "../craft.config.js";
+import { bootServer, type BootedServer } from "@routecraft/testing";
+import { OPERATOR_SUBJECT, craftConfig } from "../craft.config.js";
+import { initialize } from "../scripts/check-editor-door.js";
+import { EDITOR_AGENT } from "../shared/defaults.js";
 
 /**
  * The editor's door, and the wall in front of it.
  *
- * Two claims live here, and neither can be read off the config object alone.
- * The first is that the `acp:` key actually serves the protocol: it applies
+ * Two claims live here, and neither can be read off the config object. The
+ * first is that the `acp:` key actually serves the protocol: it applies
  * after `agent` whatever order the keys are written in, and a context whose
  * registry is empty when it applies fails the build instead. The second is
- * that the mount is walled by the same credential as everything else, which
- * is the only reason it is safe to have on from boot.
+ * that the wall in front of it is real, because the mount is on from boot in
+ * a fresh scaffold and that is only defensible if an anonymous caller is
+ * refused.
  *
- * Both are answered by speaking to a running server rather than by reading a
- * structure, because a mount that is declared and not reachable looks
- * identical from the config and fails only in somebody's editor.
+ * The requests go through `initialize` from the CI probe, so this file and
+ * the check that runs against a real instance send the same bytes.
+ *
+ * Two things are deliberately not covered here. The project's own
+ * `craft.config.ts` booted on its own ports is the probe's job in the boot
+ * job, because binding four fixed ports inside the suite would collide with
+ * whatever is already running. And `session/new` answers 202 with its reply
+ * on the event stream rather than on the post, so asserting what an unnamed
+ * agent does to a two-agent context needs a client that reads that stream.
  */
 describe("the editor mount", () => {
   /**
    * A context carrying the `acp:` key with the agent key written AFTER it,
-   * which is the ordering the plugin-array form cannot express. The agent is
-   * a stand-in for aria: this is about the mount, and loading the real
-   * markdown agent would put a model provider in the way of that.
+   * which is the ordering the plugin-array form cannot express.
+   *
+   * The agent is a stand-in for the real one: this is about the mount, and
+   * loading the markdown agent would put a model provider in the way of it.
    */
-  const boot = (): ReturnType<typeof bootServer> =>
+  const boot = (): Promise<BootedServer> =>
     bootServer((builder) =>
       builder.with({
-        acp: { server: "default", agent: "aria" },
+        acp: { server: "default", agent: EDITOR_AGENT },
         agent: {
           agents: {
-            aria: {
+            [EDITOR_AGENT]: {
               description: "The harness agent.",
               system: "You are Aria.",
             },
@@ -45,7 +55,7 @@ describe("the editor mount", () => {
                 return {
                   kind: "custom",
                   scheme: "bearer",
-                  subject: "operator",
+                  subject: OPERATOR_SUBJECT,
                 } as const;
               },
             },
@@ -54,34 +64,20 @@ describe("the editor mount", () => {
       }),
     );
 
-  const initialize = (port: number, headers: Record<string, string>) =>
-    fetch(`http://127.0.0.1:${port}/acp`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        accept: "application/json, text/event-stream",
-        ...headers,
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "initialize",
-        params: { protocolVersion: 1, clientCapabilities: {} },
-      }),
-    });
+  const url = (port: number): string => `http://127.0.0.1:${port}`;
 
   /**
    * @case The protocol is served from boot, with the agent key written after
    *   the acp key
    * @preconditions A context carrying both first-party keys and a credential
-   * @expectedResult `initialize` is answered, which is only possible if the
-   *   mount built its route from an agent registry that was already
-   *   populated when it applied
+   * @expectedResult `initialize` is answered with a protocol result, which is
+   *   only possible if the mount built its route from an agent registry that
+   *   was already populated when it applied
    */
   test("answers the protocol on the walled server", async () => {
     const { ctx, port } = await boot();
     try {
-      const response = await initialize(port, {
+      const response = await initialize(url(port), {
         authorization: "Bearer the-key",
       });
 
@@ -105,7 +101,7 @@ describe("the editor mount", () => {
   test("refuses a request carrying no key", async () => {
     const { ctx, port } = await boot();
     try {
-      const response = await initialize(port, {});
+      const response = await initialize(url(port));
 
       expect(response.status).toBe(401);
     } finally {
@@ -116,35 +112,15 @@ describe("the editor mount", () => {
   /**
    * @case Every listener this instance opens carries the wall
    * @preconditions The project's own config
-   * @expectedResult All four verify a credential. A fifth server added
-   *   without one would be a hole nobody had to write down, and the editor
-   *   door is the newest and least obvious of the four.
+   * @expectedResult Each server verifies a credential. Stated as the rule
+   *   rather than as the roster: pinning the set of names would fail for a
+   *   legitimate fifth server with a message about a mismatched array, and
+   *   the next reader would edit the array rather than add the wall.
    */
-  test("every declared server is walled", () => {
-    const servers = craftConfig.servers ?? {};
-    expect(Object.keys(servers).sort()).toEqual([
-      "approvals",
-      "editor",
-      "mcp",
-      "ops",
-    ]);
-    for (const [name, server] of Object.entries(servers)) {
-      expect(`${name}: ${"auth" in server && server.auth !== undefined}`).toBe(
-        `${name}: true`,
-      );
-    }
-  });
-
-  /**
-   * @case The mount is on the editor's own listener, answering as Aria
-   * @preconditions The project's own config
-   * @expectedResult It names the `editor` server and names the agent. The
-   *   default agent only resolves for a context holding exactly one, and
-   *   this one holds aria and researcher, so leaving it unset would refuse
-   *   `session/new` rather than answer.
-   */
-  test("is mounted on the editor server and names its agent", () => {
-    expect(craftConfig.acp?.server).toBe("editor");
-    expect(craftConfig.acp?.agent).toBe("aria");
-  });
+  test.each(Object.entries(craftConfig.servers ?? {}))(
+    "the %s server is walled",
+    (_name, server) => {
+      expect("auth" in server && server.auth !== undefined).toBe(true);
+    },
+  );
 });

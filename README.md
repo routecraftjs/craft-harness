@@ -99,3 +99,4 @@ your machine.
 seeded services, meant to be looked at. This one is a starting point meant to
 be owned. There are no mock backends here, and nothing to delete before you
 begin. Where a showcase would supply a fake, this supplies a placeholder that
+fails loudly until you set it.

@@ -5,6 +5,7 @@ import {
   defineConfig,
   timingSafeStringEqual,
 } from "@routecraft/routecraft";
+import { EDITOR_AGENT } from "./shared/defaults.js";
 import { env, mailConfigured, modelId } from "./env.js";
 
 /**
@@ -216,7 +217,7 @@ export const craftConfig: CraftConfig = defineConfig({
    */
   acp: {
     server: "editor",
-    agent: "aria",
+    agent: EDITOR_AGENT,
     agentInfo: {
       name: "craft-harness",
       title: "Craft Harness",

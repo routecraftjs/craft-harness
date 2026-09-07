@@ -20,11 +20,16 @@ describe("bun run setup", () => {
 
   beforeEach(async () => {
     scratch = await mkdtemp(join(tmpdir(), "harness-setup-"));
-    await mkdir(join(scratch, "scripts"), { recursive: true });
-    await writeFile(
-      join(scratch, "scripts", "setup.ts"),
-      await readFile(new URL("../scripts/setup.ts", import.meta.url), "utf8"),
-    );
+    // The script and the one module it imports, and nothing else. Setup is
+    // run in isolation because what it does is decide which files exist
+    // afterwards, and a copy of the repository would hide that.
+    for (const file of ["scripts/setup.ts", "shared/defaults.ts"]) {
+      await mkdir(join(scratch, dirname(file)), { recursive: true });
+      await writeFile(
+        join(scratch, file),
+        await readFile(new URL(`../${file}`, import.meta.url), "utf8"),
+      );
+    }
   });
 
   afterEach(async () => {
@@ -135,6 +140,85 @@ describe("bun run setup", () => {
     );
     expect(settings).toContain("    agent: aria");
     expect(settings).toContain(`token: ${key}`);
+  });
+
+  /**
+   * @case A blank port falls back rather than rendering a url with no port
+   * @preconditions An .env carrying ACP_PORT and OPS_PORT as empty lines
+   * @expectedResult Both urls carry the default port. A present-but-empty
+   *   value passes straight through `??`, which used to write
+   *   `url: http://127.0.0.1:` and fail inside the editor with nothing
+   *   naming the cause.
+   */
+  test("falls back when a port line is present but empty", async () => {
+    await writeFile(join(scratch, ".env"), "ACP_PORT=\nOPS_PORT=\n");
+
+    await run();
+
+    const settings = await readFile(
+      join(scratch, ".routecraft", "settings.yaml"),
+      "utf8",
+    );
+    expect(settings).toContain("url: http://127.0.0.1:9090");
+    expect(settings).toContain("    url: http://127.0.0.1:8082");
+    expect(settings).not.toContain("127.0.0.1:\n");
+  });
+
+  /**
+   * @case A port that is not a number is refused, naming the variable
+   * @preconditions An .env carrying a typo'd port
+   * @expectedResult Setup fails rather than writing the typo into the profile
+   *   as a url nothing listens on
+   */
+  test("refuses a port that is not a port", async () => {
+    await writeFile(join(scratch, ".env"), "ACP_PORT=80o2\n");
+
+    const output = await run();
+
+    expect(output).not.toContain("Wrote  .routecraft");
+    expect(existsSync(join(scratch, ".routecraft", "settings.yaml"))).toBe(
+      false,
+    );
+  });
+
+  /**
+   * @case A blanked secret written with surrounding space is really refilled
+   * @preconditions An .env whose key line is indented, which the parser
+   *   accepts as present-and-empty
+   * @expectedResult The line is refilled with a full-length secret. The
+   *   refill pattern used to be narrower than the parser's, so the replace
+   *   matched nothing, the run still reported the secret written, and the
+   *   settings file was rewritten carrying an empty token.
+   */
+  test("refills a blanked secret the parser accepted", async () => {
+    await writeFile(join(scratch, ".env"), "  CRAFT_API_KEY=\n");
+
+    const output = await run();
+
+    expect(output).toContain("Wrote  .env CRAFT_API_KEY");
+    expect((await envValue("CRAFT_API_KEY")).length).toBeGreaterThanOrEqual(32);
+    const settings = await readFile(
+      join(scratch, ".routecraft", "settings.yaml"),
+      "utf8",
+    );
+    expect(settings).not.toContain("token: \n");
+  });
+
+  /**
+   * @case A file named craft that cannot be executed is not offered as one
+   * @preconditions A non-executable `craft` on PATH and none in node_modules
+   * @expectedResult Setup says it could not find the binary. Printing the
+   *   path would put a command in the editor's settings that fails to
+   *   launch, which is the failure the message exists to prevent.
+   */
+  test("ignores a craft on PATH that is not executable", async () => {
+    const bin = join(scratch, "fake-bin");
+    await mkdir(bin, { recursive: true });
+    await writeFile(join(bin, "craft"), "#!/bin/sh\n", { mode: 0o644 });
+
+    const output = await run({ PATH: pathWith(bin) });
+
+    expect(output).toContain("could not find the `craft` binary");
   });
 
   /**

@@ -8,7 +8,7 @@ it, and removing it changes nothing about how the harness runs. The README is
 yours to rewrite as your project's own; this file is the scaffold explaining
 itself, and it is finished the moment you no longer need it.
 
-Concepts live at [routecraft.dev](https://routecraft.dev/docs). This file
+Concepts live at [routecraft.dev](https://routecraft.dev/docs/introduction). This file
 links there rather than restating it, and covers only what is decided in
 _this_ repository.
 
@@ -31,11 +31,15 @@ _this_ repository.
 ## Talk to it from your editor
 
 The harness serves the
-[Agent Client Protocol](https://routecraft.dev/docs/advanced/talk-from-your-editor)
-from boot, on its own listener, behind the same key as everything else. An
-editor that speaks ACP connects to it and you are talking to Aria in the
-project you have open, with Aria reading, editing, searching and running
-things through the editor's own files and terminal.
+[Agent Client Protocol](https://agentclientprotocol.com/) from boot, on its
+own listener, behind the same key as everything else. An editor that speaks
+ACP connects to it, and you hold a conversation with Aria without leaving
+the editor.
+
+What Aria can reach through that conversation is the ordinary tool surface
+described in the rest of this file. Reading, editing, searching and running
+things through the editor's own files and terminal are separate capabilities
+that do not ship in this scaffold yet.
 
 `bun run setup` prints the two lines your editor needs and writes the profile
 they resolve against:
@@ -70,7 +74,14 @@ by changing a profile and nothing else. Point it at anything but loopback
 over plain `http` and it refuses rather than putting your token on the wire.
 
 Run `bun run dev` in a terminal first. The editor connects to a running
-instance; it does not start one.
+instance; it does not start one. Forget, and the bridge exits naming the
+address and which file supplied it:
+
+```
+Lost the connection to http://127.0.0.1:8082/acp (from the project profile
+/your/project/.routecraft/settings.yaml): Unable to connect. Is the computer
+able to access the url?
+```
 
 ### JetBrains
 
@@ -97,23 +108,21 @@ chat as an agent you can select.
 
 An editor entry names one agent, because `agent:` in the profile is what the
 bridge sends. To reach the researcher as well, add a second profile and a
-second editor entry:
+second editor entry.
+
+Put it in the **global** settings file, `~/.routecraft/settings.yaml`, not in
+the project's. `bun run setup` owns the project file and rewrites it whole,
+so a profile added there is lost the next time anybody runs setup. The CLI
+reads both and the project file wins where they overlap.
 
 ```yaml
+# ~/.routecraft/settings.yaml
 profiles:
   researcher:
     url: http://127.0.0.1:8082
     token: <your CRAFT_API_KEY>
     agent: researcher
 ```
-
-### When your editor cannot do something
-
-Every capability the agent reaches through the editor asks the editor first
-whether it supports that call, and refuses with a message naming what is
-missing rather than hanging or crashing. An editor with no terminal support
-gets a refusal from `run-command`, `list-files` and `search-files`, and
-reading and writing files still work.
 
 ## Two conversations, not one
 
@@ -152,7 +161,32 @@ A port per surface rather than one port for everything, so a firewall rule
 can say "the editor, not management" with nothing in front of it. The editor
 door is the newest of the four and the one most likely to be reachable from
 somewhere you did not intend, which is why it is walled from boot rather than
-switched on later.
+switched on later. Its 401 carries the same RFC 9728 `resource_metadata`
+hint as the other three.
+
+Three things about that door are worth saying plainly rather than leaving to
+be discovered.
+
+**Nothing throttles it.** The `chat` route declares `.input()`, `.throttle()`
+and `.authorize()`, and those govern `craft exec chat`, the MCP tool and the
+scheduler. An editor conversation does not travel through that route, so
+none of them applies to it. What stands between a stranger and the agent is
+the key on the listener, which is why the key is the whole of the defence
+here and why the door is loopback by default.
+
+**The cleartext rule lives in the client.** The MCP transport refuses a
+non-HTTPS `MCP_URL` outside development, enforced by the server. The editor
+door has no equivalent server-side rule; instead `craft acp` refuses to send
+a bearer token over plain `http` to anything but loopback. The protection is
+real and it is on the other end of the pipe, so a different ACP client is not
+bound by it.
+
+**Moving up the ladder does not carry the editor's credential with it.**
+Swapping the validator for `jwt()` or `jwks()` changes every listener,
+including this one, and no route changes. What does not follow is the
+`editor` profile: `craft acp` has no login and sends whatever `token:` says,
+so somebody has to paste a JWT into that profile by hand and paste a fresh
+one when it expires.
 
 The ops tiers are scope-gated (`ops:introspection`, `ops:dispatch`) and the
 validator puts those scopes on the principal it returns. `setup` also writes
@@ -174,10 +208,12 @@ That is not the harness explaining itself. Every 401 carries an RFC 9728
 the CLI follows it. With a static key there is no issuer to discover, and the
 message says so rather than inventing one.
 
-**Rotating** is deleting `CRAFT_API_KEY` from `.env` and
-`.routecraft/settings.yaml` and running `bun run setup` again. Setup never
-replaces a value that is there, so rotation is something you do rather than
-something that happens to you.
+**Rotating** is deleting `CRAFT_API_KEY` from `.env` and running
+`bun run setup` again. Setup never replaces a value that is there, so
+rotation is something you do rather than something that happens to you. The
+settings file needs no editing: the key appears in it twice now, once for ops
+and once in the `editor` profile, and setup rewrites the whole file whenever
+it stops matching `.env`.
 
 **Moving up the ladder** is a change to one object in `craft.config.ts`:
 `jwt({ secret, issuer, audience })` for tokens you mint yourself,
