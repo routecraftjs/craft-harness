@@ -53,6 +53,45 @@ jobs:
           # instead of at the top of the next minute.
           SCHEDULER_CRON: "*/2 * * * * *"
         run: bun run boot-check
+      - name: The editor door answers, and only with the key
+        env:
+          LLM_API_KEY: not-a-real-key
+        run: |
+          NODE_ENV=development bun run start &
+          instance=$!
+          trap 'kill "$instance" 2>/dev/null || true' EXIT
+          # A refused connection is "not up yet"; any status at all, 401
+          # included, means the listener bound and the wall answered.
+          for _ in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' \
+              "http://127.0.0.1:8082/acp")
+            test "$code" != "000" && break
+            sleep 1
+          done
+          body='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{}}}'
+          post() {
+            curl -s -o /tmp/acp-body -w '%{http_code}' -X POST \
+              "http://127.0.0.1:8082/acp" \
+              -H 'content-type: application/json' \
+              -H 'accept: application/json, text/event-stream' \
+              "$@" -d "$body"
+          }
+          anonymous=$(post)
+          test "$anonymous" = "401" || {
+            echo "the editor mount answered $anonymous with no credential:"
+            cat /tmp/acp-body; exit 1;
+          }
+          key=$(sed -n 's/^CRAFT_API_KEY=//p' .env)
+          authenticated=$(post -H "authorization: Bearer $key")
+          test "$authenticated" = "200" || {
+            echo "the editor mount answered $authenticated with the key:"
+            cat /tmp/acp-body; exit 1;
+          }
+          grep -q '"protocolVersion"' /tmp/acp-body || {
+            echo "the editor mount answered 200 without an initialize result:"
+            cat /tmp/acp-body; exit 1;
+          }
+
       - name: The generated credentials never reach the repository
         run: |
           test -z "$(git status --porcelain)" || {

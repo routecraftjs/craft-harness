@@ -115,6 +115,10 @@ const envSchema = z.object({
   // outside development and test. It must be the URL a client actually
   // reaches, so a deployment behind a proxy sets its public address here.
   MCP_URL: z.url().default("http://localhost:8081"),
+  // The editor's door. A fourth listener rather than a share of the MCP one:
+  // this project separates surfaces by purpose so a firewall rule can, and
+  // two protocols behind one port removes that.
+  ACP_PORT: z.coerce.number().int().positive().default(8082),
   // Management, kept off the application port. `craft exec` looks at 8080 by
   // default, but `bun run setup` writes the real url into
   // `.routecraft/settings.yaml`, so the CLI never needs the default or a flag.
