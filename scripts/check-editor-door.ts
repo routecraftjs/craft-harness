@@ -49,7 +49,15 @@ export function initialize(
   });
 }
 
-/** Wait for something to answer, or report that nothing ever bound. */
+/**
+ * Wait for something to answer, or report that nothing ever bound.
+ *
+ * The timeout says what it found rather than only that it waited. "The
+ * instance did not start" was wrong once already: the instance was running
+ * and the probe was dialling an address it had not bound, which reads
+ * identically from here. So on giving up, ask the other loopback family
+ * before blaming the process.
+ */
 async function waitForListener(baseUrl: string): Promise<void> {
   for (let attempt = 0; attempt < BIND_TIMEOUT_SECONDS; attempt += 1) {
     try {
@@ -62,8 +70,34 @@ async function waitForListener(baseUrl: string): Promise<void> {
     }
   }
   throw new Error(
-    `Nothing bound ${baseUrl} within ${BIND_TIMEOUT_SECONDS}s. The instance did not start.`,
+    `Nothing answered ${baseUrl} within ${BIND_TIMEOUT_SECONDS}s. ` +
+      `${await otherLoopback(baseUrl)}`,
   );
+}
+
+/**
+ * Whether the same port answers on the other loopback family, phrased for
+ * the person reading a failed job.
+ */
+async function otherLoopback(baseUrl: string): Promise<string> {
+  let swapped: string;
+  try {
+    const url = new URL(baseUrl);
+    if (url.hostname !== "127.0.0.1") return "The instance did not start.";
+    url.hostname = "[::1]";
+    swapped = url.toString().replace(/\/$/, "");
+  } catch {
+    return "The instance did not start.";
+  }
+  try {
+    await initialize(swapped);
+    return (
+      `${swapped} DOES answer, so the instance is running and bound IPv6 ` +
+      `only. The listener's host is resolving to ::1; bind an explicit address.`
+    );
+  } catch {
+    return "Nothing answered on ::1 either, so the instance did not start.";
+  }
 }
 
 /** A response, reduced to what a failure message needs to quote. */

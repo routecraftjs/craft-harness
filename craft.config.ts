@@ -135,7 +135,14 @@ export const craftConfig: CraftConfig = defineConfig({
   servers: {
     approvals: { host: "localhost", port: env.HTTP_PORT, auth: apiKeyAuth },
     mcp: { host: "localhost", port: env.MCP_PORT, auth: apiKeyAuth },
-    editor: { host: "localhost", port: env.ACP_PORT, auth: apiKeyAuth },
+    // `127.0.0.1` rather than `localhost`, and that is not a style choice.
+    // `localhost` resolves through the host's own rules, so on a machine
+    // that answers it with `::1` first the listener binds IPv6 while
+    // `bun run setup` writes `http://127.0.0.1:` into the editor profile and
+    // HELP.md prints the same. The editor would then dial an address nothing
+    // is listening on. The three servers above predate this and are left
+    // alone; they carry the same latent ambiguity and no caller has hit it.
+    editor: { host: "127.0.0.1", port: env.ACP_PORT, auth: apiKeyAuth },
     ops: { host: "localhost", port: env.OPS_PORT, auth: apiKeyAuth },
   },
 
