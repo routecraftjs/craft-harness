@@ -1,10 +1,7 @@
 import { surface } from "@routecraft/ai";
 import { craft, direct } from "@routecraft/routecraft";
 import { z } from "zod";
-import {
-  FILE_CHARACTER_LIMIT,
-  requireEditor,
-} from "../../../shared/editor.js";
+import { FILE_CHARACTER_LIMIT, requireEditor } from "../../../shared/editor.js";
 import { EditorPath } from "../../../shared/editor-paths.js";
 import { askPermission } from "../ask-permission/route.js";
 

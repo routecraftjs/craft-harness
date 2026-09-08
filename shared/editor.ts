@@ -81,16 +81,15 @@ export function editorCannot(what: string): string {
  *
  * Every permission prompt this harness raises is titled with model-supplied
  * text, and that prompt is the whole boundary for anything the allowlist does
- * not cover. So the text is stripped of what can compose a different
- * dialogue: control characters, the unicode line separators JSON escaping
- * leaves alone, and the bidirectional overrides that reorder what is on
- * screen. The cap stops a long argument scrolling the real question out of
- * whatever the editor renders.
+ * not cover. So the text is stripped of everything that lays a dialogue out
+ * rather than says something: the unicode Other category, which is the
+ * control characters and the format characters the bidirectional overrides
+ * live among, plus the two line separators that are in neither. The cap stops
+ * a long argument scrolling the real question out of whatever the editor
+ * renders.
  */
 export function readable(text: string): string {
-  return text
-    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, " ")
-    .slice(0, 300);
+  return text.replace(/[\p{C}\p{Zl}\p{Zp}]/gu, " ").slice(0, 300);
 }
 
 /**

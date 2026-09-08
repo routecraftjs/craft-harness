@@ -1,10 +1,7 @@
 import { craft, direct } from "@routecraft/routecraft";
 import { z } from "zod";
 import { SEARCH_MATCH_LIMIT, requireEditor } from "../../../shared/editor.js";
-import {
-  linesOf,
-  withGitFallback,
-} from "../../../shared/editor-terminal.js";
+import { linesOf, withGitFallback } from "../../../shared/editor-terminal.js";
 
 /**
  * Search the project the editor has open.

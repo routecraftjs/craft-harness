@@ -43,10 +43,11 @@ import { env } from "../../../env.js";
  * something else makes it worthless. `bun -e`, `git -c alias.x=!sh` and `cat`
  * on a file of credentials are each the whole boundary gone, quietly, with no
  * prompt. So the shipped default carries only programs that read and print,
- * and `HANDS_OVER_CODE` below refuses the quiet path for arguments that hand
- * a program code to run. That second check is a guard against an operator's
- * mistake, not a boundary of its own: a list containing an interpreter is
- * unsafe whatever this file does about its flags.
+ * and two argument checks below take the quiet path away from a call that
+ * hands a program code to run, or that points a reading program at something
+ * outside the project. Those are guards against an operator's mistake rather
+ * than boundaries of their own: a list containing an interpreter is unsafe
+ * whatever this file does about its flags.
  */
 
 /** Commands that need no permission, parsed once from the environment. */
@@ -67,6 +68,28 @@ export function handsOverCode(args: string[]): boolean {
   return args.some((arg) => HANDS_OVER_CODE.test(arg));
 }
 
+/**
+ * Whether an argument names something the file capabilities would refuse.
+ *
+ * `rg` and `ls` only read, which is why they can run without asking, but
+ * WHERE they read is an argument. `rg -n "PRIVATE KEY" /home/you` and
+ * `ls .ssh` are the leak `read-file` exists to refuse, arriving by the other
+ * door. The rule is the one in `shared/editor-paths.ts` read the other way
+ * round: absolute, up, or hidden means ask. A bare `.` is the project itself
+ * and is how these commands are normally called.
+ *
+ * A search pattern that happens to look like a path costs a prompt. That is
+ * the right way for this to be wrong.
+ */
+export function reachesPastTheProject(args: string[]): boolean {
+  return args.some((arg) => {
+    if (arg.startsWith("/")) return true;
+    return arg
+      .split("/")
+      .some((segment) => segment.startsWith(".") && segment !== ".");
+  });
+}
+
 export const RunCommandInput = z.object({
   command: z
     .string()
@@ -83,8 +106,7 @@ export type RunCommandInput = z.infer<typeof RunCommandInput>;
 
 /** What the capability answers with: a finished command, or a refusal. */
 export type CommandOutcome =
-  | CommandResult
-  | { command: string; args: string[]; refused: string };
+  CommandResult | { command: string; args: string[]; refused: string };
 
 /**
  * The command as the person will read it in the permission prompt.
@@ -111,7 +133,9 @@ export async function permitted(
   input: RunCommandInput,
 ): Promise<boolean> {
   const quiet =
-    ALLOWLIST.includes(input.command) && !handsOverCode(input.args);
+    ALLOWLIST.includes(input.command) &&
+    !handsOverCode(input.args) &&
+    !reachesPastTheProject(input.args);
   if (quiet) return true;
 
   return askPermission(exchange, {

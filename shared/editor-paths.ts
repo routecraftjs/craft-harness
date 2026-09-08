@@ -75,6 +75,7 @@ export const EditorPath = z
   .min(1)
   .superRefine((value, ctx) => {
     const refusal = pathRefusal(value);
-    if (refusal !== undefined) ctx.addIssue({ code: "custom", message: refusal });
+    if (refusal !== undefined)
+      ctx.addIssue({ code: "custom", message: refusal });
   })
   .describe("Absolute path to the file, inside the open project.");

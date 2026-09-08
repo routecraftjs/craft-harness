@@ -7,6 +7,7 @@ import runCommand, {
   ALLOWLIST,
   RunCommandInput,
   handsOverCode,
+  reachesPastTheProject,
   spell,
 } from "../capabilities/editor/run-command/route.js";
 import searchFiles from "../capabilities/editor/search-files/route.js";
@@ -109,7 +110,10 @@ describe("run-command in the editor's terminal", () => {
    */
   test("c: exit 3 comes back as a failed call with its stderr", async () => {
     const run = await runCase(
-      { command: "bun", args: ["-e", "console.error('the reason'); process.exit(3)"] },
+      {
+        command: "bun",
+        args: ["-e", "console.error('the reason'); process.exit(3)"],
+      },
       { permission: ALLOW },
     );
 
@@ -418,6 +422,42 @@ describe("run-command in the editor's terminal", () => {
     expect(handsOverCode(["--files", "."])).toBe(false);
     expect(handsOverCode(["-n", "--", "needle", "."])).toBe(false);
     expect(handsOverCode(["-C", "/some/dir"])).toBe(false);
+  });
+
+  /**
+   * @case An allowlisted reader pointed outside the project is asked about
+   * @preconditions `rg` is on the allowlist, given a path that is not the
+   *   project
+   * @expectedResult The person is asked. `rg` and `ls` are on the list
+   *   because they only read, but WHERE they read is an argument, and
+   *   `rg -n "PRIVATE KEY" /home/you` is the leak `read-file` refuses
+   *   arriving by the other door.
+   */
+  test("an allowlisted reader aimed outside the project still asks", async () => {
+    const run = await runCase(
+      { command: "rg", args: ["--files", "/home"] },
+      { permission: DENY },
+    );
+
+    expect(run.callsTo("session/request_permission")).toHaveLength(1);
+    expect(run.callsTo("terminal/create")).toHaveLength(0);
+  });
+
+  /**
+   * @case The arguments that reach past the project, by their spelling
+   * @preconditions The predicate the route asks
+   * @expectedResult The same rule `shared/editor-paths.ts` applies to file
+   *   paths, read the other way round, and the ordinary flags and the bare
+   *   `.` that these commands are normally called with are untouched
+   */
+  test("arguments naming somewhere else are recognised", () => {
+    expect(reachesPastTheProject(["/etc/passwd"])).toBe(true);
+    expect(reachesPastTheProject(["../../home/you"])).toBe(true);
+    expect(reachesPastTheProject([".env"])).toBe(true);
+    expect(reachesPastTheProject(["src/../.ssh/id_rsa"])).toBe(true);
+    expect(reachesPastTheProject(["--files", "."])).toBe(false);
+    expect(reachesPastTheProject(["-n", "--", "needle", "./src"])).toBe(false);
+    expect(reachesPastTheProject(["src/index.ts"])).toBe(false);
   });
 
   /**
