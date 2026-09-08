@@ -288,7 +288,11 @@ describe("run-command in the editor's terminal", () => {
   /**
    * @case (j) Listing and search, with ripgrep and without it
    * @preconditions A project with a file to find, run once normally and once
-   *   with every ripgrep on PATH hidden
+   *   with every ripgrep on PATH hidden. This case is the preference rather
+   *   than the fallback, so it needs a real ripgrep on the machine; CI
+   *   installs one. The project is also a git repository, so a machine
+   *   without ripgrep fails this saying it got `git` rather than saying the
+   *   whole call failed, which is a much shorter road to the reason.
    * @expectedResult Both answer the same shape, and the fallback says which
    *   tool ran. The agent must not have to know which of the two is
    *   installed on the person's machine.
@@ -299,6 +303,7 @@ describe("run-command in the editor's terminal", () => {
       route: "search-files",
       input: { pattern: "needle" },
       projectFiles: { "haystack.txt": "one\nneedle here\nthree\n" },
+      gitInit: true,
       capabilities: CAPABLE_EDITOR,
     });
 
