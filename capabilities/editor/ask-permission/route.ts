@@ -23,6 +23,13 @@ import { readable } from "../../../shared/editor.js";
  * person's attention with it, and the guardrail is worth more as the only
  * path to a write than as one tool beside the write.
  *
+ * Nothing dispatches the route today, and that is not an oversight either.
+ * `write-file`, `edit-file` and `run-command` ask as part of their own work
+ * and need the answer before they decide what to do next, so they call the
+ * function; the route is what makes asking a capability of this harness
+ * rather than a private helper, and it is the in-process door another route
+ * can reach with `direct("ask-permission")` without becoming a tool.
+ *
  * ## Failing closed
  *
  * A refusal, a malformed answer, and an answer naming an option that was
