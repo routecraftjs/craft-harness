@@ -36,10 +36,10 @@ own listener, behind the same key as everything else. An editor that speaks
 ACP connects to it, and you hold a conversation with Aria without leaving
 the editor.
 
-What Aria can reach through that conversation is the ordinary tool surface
-described in the rest of this file. Reading, editing, searching and running
-things through the editor's own files and terminal are separate capabilities
-that do not ship in this scaffold yet.
+Through that conversation Aria reads, edits, searches and runs things in the
+project you have open, using the editor's own files and terminal. Those are
+eight ordinary routes under `capabilities/editor/`, each with its guardrails
+written where you can read and change them.
 
 `bun run setup` prints the two lines your editor needs and writes the profile
 they resolve against:
@@ -123,6 +123,59 @@ profiles:
     token: <your CRAFT_API_KEY>
     agent: researcher
 ```
+
+### What Aria can do in your project
+
+Eight capabilities, all on in a fresh scaffold, all reaching your editor
+rather than this instance's own disk.
+
+| Capability     | What it does                            | What stands in front of it                                   |
+| -------------- | --------------------------------------- | ------------------------------------------------------------ |
+| `read-file`    | Reads a file in the open project        | No traversal, no dotfiles, a size cap                        |
+| `write-file`   | Replaces a file's contents              | The same path rules, and it asks first                       |
+| `edit-file`    | Replaces exact text, showing you a diff | The same, plus the text must match once                      |
+| `run-command`  | Runs a program in your terminal         | An allowlist, a timeout, bounded output, arguments as a list |
+| `list-files`   | Lists the project's files               | Bounded, and it is `run-command` underneath                  |
+| `search-files` | Searches the project                    | The same                                                     |
+| `open-url`     | Opens a link in your browser            | Only http and https                                          |
+| `update-plan`  | Shows a checklist of the work           | Nothing to guard: it only tells you                          |
+
+**`run-command` is not the sandboxed shell.** `bash-runner` puts a script
+inside a kernel isolation tier and needs no allowlist because the tier is the
+boundary. This one runs in your editor, as you, with your files and your
+network. So the boundary is what may run at all:
+`RUN_COMMAND_ALLOWLIST` names the commands that run without asking, and
+anything else raises a permission prompt in the editor first. Arguments are
+passed as a list and never joined, so `;` and `&&` inside one of them are
+characters rather than syntax.
+
+On macOS this is worth saying plainly. `bash-runner` refuses to run at all
+there, because the isolation tier it needs is Linux and this template fails
+loudly rather than degrading. `run-command` does run on macOS, through your
+editor, unsandboxed, as you. That is a real difference in what the agent can
+reach on that platform, and the allowlist is the only thing narrowing it.
+
+**Where the project boundary actually is.** ACP paths are absolute, and the
+editor decides what it will open: it refuses to read outside the workspace
+you opened, which is a boundary enforced by the program that owns the files.
+What this harness adds is the half an editor will not do for you, and it is
+in `shared/editor-paths.ts`: no `..`, no dotfiles, never `.env`, and a cap on
+how much of a file reaches one turn.
+
+### When your editor cannot do something
+
+Every capability asks the editor whether it supports the call it needs, and
+refuses with a message naming what is missing rather than hanging. An editor
+with no terminal gets a refusal from `run-command`, `list-files` and
+`search-files`, and reading and writing still work.
+
+Two known gaps, both reported upstream rather than worked around. A failed
+tool call reaches the editor as the error's class name with no message, so
+you may see `RoutecraftError` in the editor while the agent itself was told
+what actually went wrong. And **stopping a running command does not stop the
+command**: cancelling the turn takes the surface away before the capability
+can send its kill and release, so the program keeps running in your terminal
+and you may need to stop it there.
 
 ## Two conversations, not one
 
