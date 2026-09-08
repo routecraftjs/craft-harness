@@ -100,6 +100,20 @@ export const ARIA_TOOLS = [
   "Direct(request-approval)",
   "Direct(compact)",
   "Direct(mail-reply)",
+  // The editor capabilities. Every one of them is a call OUT to the person's
+  // editor, so each is offered unconditionally and refuses at the call when
+  // the editor does not implement what it needs. `ask-permission` is
+  // deliberately absent: it is the question the write and command
+  // capabilities ask, and a model that could call it directly could spend a
+  // person's attention with it.
+  "Direct(read-file)",
+  "Direct(write-file)",
+  "Direct(edit-file)",
+  "Direct(run-command)",
+  "Direct(list-files)",
+  "Direct(search-files)",
+  "Direct(open-url)",
+  "Direct(update-plan)",
 ];
 
 /**

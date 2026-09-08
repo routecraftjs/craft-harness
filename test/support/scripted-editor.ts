@@ -140,6 +140,10 @@ export interface ScriptedEditorRun {
 export const CAPABLE_EDITOR: ClientCapabilities = {
   fs: { readTextFile: true, writeTextFile: true },
   terminal: true,
+  // Advertised, because the adapter asks before it calls: a client that
+  // never offered a method may answer anything at all, so a route is told it
+  // is a configuration mismatch rather than left waiting on it.
+  elicitation: { url: {} },
 };
 
 /**
