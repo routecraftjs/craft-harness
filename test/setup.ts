@@ -36,3 +36,16 @@ process.env["APPROVERS"] = "";
 process.env["MAIL_ADDRESS"] = "";
 process.env["MAIL_APP_PASSWORD"] = "";
 process.env["HEARTBEAT_ENABLED"] = "false";
+
+/**
+ * The allowlist a fresh scaffold ships, pinned so a developer's own value
+ * cannot turn an assertion about the default into one about their machine.
+ */
+process.env["RUN_COMMAND_ALLOWLIST"] = "git,rg,ls,cat,pwd,bun,echo";
+
+/**
+ * A short deadline, so the case that proves a command past the timeout is
+ * killed does not take the default minute to do it. The route reads the same
+ * variable an operator would set.
+ */
+process.env["RUN_COMMAND_TIMEOUT_MS"] = "2000";
