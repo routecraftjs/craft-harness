@@ -15,16 +15,26 @@ import { DEFAULT_PORTS } from "./shared/defaults.js";
  * happened to read it first.
  */
 
-/** Comma-separated list, trimmed, empty entries dropped. */
-const list = z
-  .string()
-  .default("")
-  .transform((value) =>
-    value
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter(Boolean),
-  );
+/**
+ * Comma-separated list, trimmed, empty entries dropped.
+ *
+ * The default belongs on the string rather than on the transform: a default
+ * applied after `.transform()` has to be a function returning the parsed
+ * shape, which puts the same list in the file twice in two spellings.
+ */
+const listOf = (fallback = ""): z.ZodType<string[], string | undefined> =>
+  z
+    .string()
+    .default(fallback)
+    .transform((value) =>
+      value
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    );
+
+/** The empty-by-default list, which is what most of these are. */
+const list = listOf();
 
 /**
  * Hosts `web-fetch` may reach, lowercased for comparison against a parsed
@@ -92,6 +102,18 @@ const envSchema = z.object({
   LLM_MODEL: z.string().min(1).default("claude-sonnet-4-5"),
 
   WEB_FETCH_ALLOWED_HOSTS: allowedHosts,
+
+  // What `run-command` may run in the editor's terminal without asking. It
+  // runs as the person, with their files and their network, so this list is
+  // the boundary rather than a convenience. Anything not on it raises a
+  // permission prompt in the editor before anything runs. Only programs that
+  // cannot be told to run something else belong here: `bun`, `git`, `node`
+  // and `cat` are each a way around the list rather than an entry on it.
+  RUN_COMMAND_ALLOWLIST: listOf("rg,ls,pwd,echo"),
+  // How long a command may run in the editor's terminal before it is killed
+  // and reported as timed out. Fixed per instance rather than per call: a
+  // caller that can raise its own deadline has no deadline.
+  RUN_COMMAND_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
   BRAVE_SEARCH_API_KEY: z.string().default(""),
 
   SCHEDULER_CRON: z.string().min(1).default("* * * * *"),

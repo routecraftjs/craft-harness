@@ -20,6 +20,12 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+      # `search-files` and `list-files` prefer ripgrep and fall back to git,
+      # and one case proves the preference rather than the fallback. The
+      # runner has no ripgrep, so without this that case tests the fallback
+      # twice and fails.
+      - name: Install ripgrep, which search-files prefers
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ripgrep
       - run: bun install --frozen-lockfile
       - run: bun run format
       - run: bun run typecheck
