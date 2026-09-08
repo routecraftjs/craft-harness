@@ -1,3 +1,5 @@
+import { hasSurface } from "@routecraft/ai";
+import type { Exchange } from "@routecraft/routecraft";
 import { env } from "../env.js";
 
 /**
@@ -9,11 +11,11 @@ import { env } from "../env.js";
  * route reads the value from here and enforces it in its own body, where a
  * reader of that route can see it.
  *
- * What is deliberately NOT here is path containment or the command
- * allowlist. Those are guardrails rather than numbers, and the brief for
- * these capabilities is that each one carries its own visible: a rule
- * enforced in a helper nobody opens is one that can go missing without a
- * diff anybody reads.
+ * What is deliberately NOT here is the command allowlist. That is the one
+ * guardrail an operator changes to widen what a model may do without being
+ * asked, and it belongs in the route whose behaviour it decides. Path rules
+ * live in `shared/editor-paths.ts` because they are one rule with several
+ * branches, applied by three routes in their `.input()`.
  */
 
 /**
@@ -43,20 +45,61 @@ export const COMMAND_TIMEOUT_MS = env.RUN_COMMAND_TIMEOUT_MS;
  */
 export const FILE_CHARACTER_LIMIT = 100_000;
 
+/**
+ * Lines `read-file` asks the editor for, so the cap costs one message.
+ *
+ * `ReadTextFileRequest` carries an optional `limit` in lines, which is the
+ * only bound the protocol offers. It is the first of two: a file of very long
+ * lines passes this and is still refused by `FILE_CHARACTER_LIMIT`.
+ */
+export const FILE_LINE_LIMIT = 2_000;
+
 /** Matches at most this many lines, so one search cannot fill a turn. */
 export const SEARCH_MATCH_LIMIT = 200;
 
 /**
- * Say what is missing, in the words the person reading the reply needs.
+ * Say there is no editor, in the words the person reading the reply needs.
  *
- * Every capability here can meet an editor that does not implement the call
- * it needs. That is a configuration mismatch rather than a fault, and the
- * agent should be told which capability the editor lacks rather than shown
- * a protocol error code.
+ * Every capability here can be reached from a schedule or from `craft exec`,
+ * where nothing is connected. That is a configuration mismatch rather than a
+ * fault, and the agent should be told so rather than shown a protocol error.
+ *
+ * An editor that IS connected but does not implement the call a capability
+ * needs is a different refusal, and it is not this one: the ACP adapter
+ * checks the advertised client capabilities and refuses naming the method
+ * before the route's own call goes out.
  */
-export function editorCannot(capability: string, what: string): string {
+export function editorCannot(what: string): string {
   return (
-    `This editor does not offer ${capability}, so ${what} is not available ` +
-    `here. Everything else still works.`
+    `No editor is connected to this turn, so ${what} is not available here. ` +
+    `Everything else still works.`
   );
+}
+
+/**
+ * Text fit for a dialogue the person reads, from something a model chose.
+ *
+ * Every permission prompt this harness raises is titled with model-supplied
+ * text, and that prompt is the whole boundary for anything the allowlist does
+ * not cover. So the text is stripped of what can compose a different
+ * dialogue: control characters, the unicode line separators JSON escaping
+ * leaves alone, and the bidirectional overrides that reorder what is on
+ * screen. The cap stops a long argument scrolling the real question out of
+ * whatever the editor renders.
+ */
+export function readable(text: string): string {
+  return text
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, " ")
+    .slice(0, 300);
+}
+
+/**
+ * Refuse before calling out, when there is no editor to call.
+ *
+ * One line per route rather than a five-line block per route: the guardrail
+ * worth reading in a route body is the one that decides what the capability
+ * may do, and this is the precondition that it can do anything at all.
+ */
+export function requireEditor(exchange: Exchange<unknown>, what: string): void {
+  if (!hasSurface(exchange)) throw new Error(editorCannot(what));
 }

@@ -1,9 +1,10 @@
-import { hasSurface } from "@routecraft/ai";
 import { craft, direct } from "@routecraft/routecraft";
 import { z } from "zod";
-import { SEARCH_MATCH_LIMIT, editorCannot } from "../../../shared/editor.js";
-import { linesOf, missingProgram } from "../list-files/route.js";
-import { runInEditorTerminal } from "../run-command/route.js";
+import { SEARCH_MATCH_LIMIT, requireEditor } from "../../../shared/editor.js";
+import {
+  linesOf,
+  withGitFallback,
+} from "../../../shared/editor-terminal.js";
 
 /**
  * Search the project the editor has open.
@@ -17,7 +18,9 @@ import { runInEditorTerminal } from "../run-command/route.js";
  * The pattern is passed as its own argument and never spliced into a
  * command line, so a pattern containing a semicolon or a quote is a pattern.
  * `--` ends option parsing, so a pattern starting with a dash is a pattern
- * rather than a flag somebody did not intend to pass.
+ * rather than a flag somebody did not intend to pass. Those two together are
+ * why this needs no permission prompt: the model chooses the pattern and
+ * nothing else.
  *
  * The trailing `.` is not decoration. Given no path, ripgrep reads standard
  * input, and whether the editor attached one is the editor's business; a
@@ -83,25 +86,14 @@ export default craft()
   .input({ body: SearchFilesInput })
   .from<SearchFilesInput>(direct())
   .transform(async (input, exchange, ctx): Promise<SearchResult> => {
-    if (!hasSurface(exchange)) {
-      throw new Error(
-        editorCannot("a connection to your editor", "searching the project"),
-      );
-    }
+    requireEditor(exchange, "searching the project");
 
-    const ripgrep = await runInEditorTerminal(
+    const { tool, result } = await withGitFallback(
       exchange,
       { command: "rg", args: ["-n", "--", input.pattern, "."] },
+      { command: "git", args: ["grep", "-n", "--", input.pattern] },
       ctx?.signal,
     );
-    const usable = !missingProgram(ripgrep);
-    const result = usable
-      ? ripgrep
-      : await runInEditorTerminal(
-          exchange,
-          { command: "git", args: ["grep", "-n", "--", input.pattern] },
-          ctx?.signal,
-        );
 
     // Both tools answer 1 for "no matches", which is not a failure.
     if (result.exitCode !== 0 && result.exitCode !== 1) {
@@ -110,7 +102,7 @@ export default craft()
 
     const { lines, truncated } = linesOf(result, input.limit);
     return {
-      tool: usable ? "rg" : "git",
+      tool,
       matches: parseMatches(lines),
       truncated,
     };

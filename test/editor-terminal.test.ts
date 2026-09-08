@@ -1,11 +1,17 @@
+import { getEventListeners } from "node:events";
 import { afterEach, describe, expect, test } from "bun:test";
+import type { RequestPermissionOutcome } from "@agentclientprotocol/sdk";
 import { testContext, type TestContext } from "@routecraft/testing";
 import listFiles from "../capabilities/editor/list-files/route.js";
 import runCommand, {
   ALLOWLIST,
   RunCommandInput,
+  handsOverCode,
+  spell,
 } from "../capabilities/editor/run-command/route.js";
 import searchFiles from "../capabilities/editor/search-files/route.js";
+import { COMMAND_TIMEOUT_MS } from "../shared/editor.js";
+import { abortion } from "../shared/editor-terminal.js";
 import {
   CAPABLE_EDITOR,
   runWithScriptedEditor,
@@ -30,6 +36,22 @@ describe("run-command in the editor's terminal", () => {
     await t?.stop();
     t = undefined;
   });
+
+  /**
+   * A person clicking yes.
+   *
+   * Named because the shipped allowlist holds only programs that read and
+   * print, so every case here that runs something else goes through the
+   * prompt, and a case that did NOT say how the person answered would be
+   * asserting against this file's default rather than against a decision.
+   */
+  const ALLOW = (): RequestPermissionOutcome => ({
+    outcome: "selected",
+    optionId: "allow",
+  });
+
+  /** A person clicking no. */
+  const DENY = (): RequestPermissionOutcome => ({ outcome: "cancelled" });
 
   const runCase = (
     input: unknown,
@@ -77,17 +99,19 @@ describe("run-command in the editor's terminal", () => {
 
   /**
    * @case (c) A failing command is a failed tool call carrying its reason
-   * @preconditions `bun` on the allowlist, running a script that exits 3
-   *   after writing to standard error
+   * @preconditions A script that exits 3 after writing to standard error.
+   *   `bun` is NOT on the shipped allowlist, so the person allows it first,
+   *   which is the honest shape: this is a program that runs whatever it is
+   *   handed.
    * @expectedResult The agent sees a failed tool call whose text carries the
    *   exit code and the error output. A non-zero exit reported as a success
    *   with a field to notice is a result a model reads straight past.
    */
   test("c: exit 3 comes back as a failed call with its stderr", async () => {
-    const run = await runCase({
-      command: "bun",
-      args: ["-e", "console.error('the reason'); process.exit(3)"],
-    });
+    const run = await runCase(
+      { command: "bun", args: ["-e", "console.error('the reason'); process.exit(3)"] },
+      { permission: ALLOW },
+    );
 
     expect(run.toolFailed).toBe(true);
     // The reason reaches the AGENT, which is what the case is about. The
@@ -108,13 +132,16 @@ describe("run-command in the editor's terminal", () => {
    *   text it is reading is a tail rather than the whole thing.
    */
   test("d: unbounded output is truncated at the cap and reported", async () => {
-    const run = await runCase({
-      command: "bun",
-      args: [
-        "-e",
-        "for (let i = 0; i < 20000; i += 1) console.log('x'.repeat(64))",
-      ],
-    });
+    const run = await runCase(
+      {
+        command: "bun",
+        args: [
+          "-e",
+          "for (let i = 0; i < 20000; i += 1) console.log('x'.repeat(64))",
+        ],
+      },
+      { permission: ALLOW },
+    );
 
     const limit = run.callsTo("terminal/create")[0]?.params["outputByteLimit"];
     expect(typeof limit).toBe("number");
@@ -135,10 +162,10 @@ describe("run-command in the editor's terminal", () => {
    *   fails this case.
    */
   test("e: a command past the timeout is killed and released", async () => {
-    const run = await runCase({
-      command: "bun",
-      args: ["-e", "await Bun.sleep(30000)"],
-    });
+    const run = await runCase(
+      { command: "bun", args: ["-e", "await Bun.sleep(30000)"] },
+      { permission: ALLOW },
+    );
 
     expect(run.callsTo("terminal/kill")).toHaveLength(1);
     expect(run.callsTo("terminal/release")).toHaveLength(1);
@@ -169,7 +196,7 @@ describe("run-command in the editor's terminal", () => {
   test("f: cancelling returns cancelled, and cannot clean up (pins a gap)", async () => {
     const run = await runCase(
       { command: "bun", args: ["-e", "await Bun.sleep(30000)"] },
-      { cancelOn: "terminal/wait_for_exit", drainMs: 4000 },
+      { permission: ALLOW, cancelOn: "terminal/wait_for_exit", drainMs: 4000 },
     );
 
     expect(run.stopReason).toBe("cancelled");
@@ -189,7 +216,7 @@ describe("run-command in the editor's terminal", () => {
   test("g: a refused permission creates no terminal", async () => {
     const run = await runCase(
       { command: "curl", args: ["https://example.com"] },
-      { permission: () => ({ outcome: "cancelled" }) },
+      { permission: DENY },
     );
 
     expect(run.callsTo("session/request_permission")).toHaveLength(1);
@@ -209,7 +236,7 @@ describe("run-command in the editor's terminal", () => {
       // `sleep` is deliberately NOT on the pinned allowlist, which is what
       // makes this the granted-permission path rather than the quiet one.
       { command: "sleep", args: ["0"] },
-      { permission: () => ({ outcome: "selected", optionId: "allow" }) },
+      { permission: ALLOW },
     );
 
     expect(run.callsTo("session/request_permission")).toHaveLength(1);
@@ -267,7 +294,7 @@ describe("run-command in the editor's terminal", () => {
       routes: [runCommand, listFiles, searchFiles],
       route: "search-files",
       input: { pattern: "needle" },
-      seed: { "haystack.txt": "one\nneedle here\nthree\n" },
+      projectFiles: { "haystack.txt": "one\nneedle here\nthree\n" },
       capabilities: CAPABLE_EDITOR,
     });
 
@@ -291,7 +318,7 @@ describe("run-command in the editor's terminal", () => {
       routes: [runCommand, listFiles, searchFiles],
       route: "search-files",
       input: { pattern: "needle" },
-      seed: { "haystack.txt": "one\nneedle here\nthree\n" },
+      projectFiles: { "haystack.txt": "one\nneedle here\nthree\n" },
       gitInit: true,
       absent: ["rg"],
     });
@@ -318,13 +345,165 @@ describe("run-command in the editor's terminal", () => {
 
   /**
    * @case The allowlist is configuration, not a literal in the route
-   * @preconditions `RUN_COMMAND_ALLOWLIST` as `test/setup.ts` pins it
+   * @preconditions `RUN_COMMAND_ALLOWLIST` as `test/setup.ts` pins it, which
+   *   is the value `.env.schema` and `env.ts` ship
    * @expectedResult The parsed list, so an operator changes the boundary
-   *   without touching a route
+   *   without touching a route. It holds only programs that read and print:
+   *   an entry that can be told to run something else is not a narrower
+   *   boundary than no boundary, it is none at all.
    */
-  test("the allowlist comes from the environment", () => {
-    expect(ALLOWLIST).toContain("git");
-    expect(ALLOWLIST).not.toContain("curl");
+  test("the shipped allowlist holds no program that runs something else", () => {
+    expect([...ALLOWLIST].sort()).toEqual(["echo", "ls", "pwd", "rg"]);
+    for (const gateway of ["bun", "node", "git", "cat", "sh", "curl"]) {
+      expect(ALLOWLIST).not.toContain(gateway);
+    }
+  });
+
+  /**
+   * @case Reading this instance's own key needs the person to say yes
+   * @preconditions A project holding a `.env` with a secret in it, and the
+   *   editor refusing permission
+   * @expectedResult No terminal, and the secret reaches neither the agent nor
+   *   the result. `read-file` refuses `.env` by its path rules, and a
+   *   `cat` that ran without asking would be that refusal with an extra step:
+   *   this is the case that says the two guardrails cannot be played off
+   *   against each other.
+   */
+  test("cat .env cannot run without being allowed", async () => {
+    const run = await runCase(
+      { command: "cat", args: [".env"] },
+      {
+        projectFiles: { ".env": "CRAFT_API_KEY=super-secret-value-here\n" },
+        permission: DENY,
+      },
+    );
+
+    expect(run.callsTo("session/request_permission")).toHaveLength(1);
+    expect(run.callsTo("terminal/create")).toHaveLength(0);
+    expect(run.modelSaw).not.toContain("super-secret-value-here");
+    expect(JSON.stringify(run.toolOutput)).not.toContain(
+      "super-secret-value-here",
+    );
+  });
+
+  /**
+   * @case An allowlisted program handed code to run is still asked about
+   * @preconditions `rg` is on the allowlist, called with `-e`
+   * @expectedResult The person is asked anyway. The allowlist names programs
+   *   and a program that takes code is a way past it, so the argument decides
+   *   too. `-e` is a legitimate ripgrep flag and this costs it a prompt, which
+   *   is the right way round: the check can only ever cost a question.
+   */
+  test("an interpreter argument on an allowlisted program still asks", async () => {
+    const run = await runCase(
+      { command: "rg", args: ["-e", "needle", "."] },
+      { permission: DENY },
+    );
+
+    expect(run.callsTo("session/request_permission")).toHaveLength(1);
+    expect(run.callsTo("terminal/create")).toHaveLength(0);
+  });
+
+  /**
+   * @case The arguments that hand a program code, by their spelling
+   * @preconditions The predicate the route asks
+   * @expectedResult The shapes that turn an allowlisted program into a shell
+   *   are caught in both spellings, and ordinary flags are not
+   */
+  test("arguments that run something else are recognised", () => {
+    expect(handsOverCode(["-e", "console.log(1)"])).toBe(true);
+    expect(handsOverCode(["--eval=console.log(1)"])).toBe(true);
+    expect(handsOverCode(["-c", "alias.x=!sh"])).toBe(true);
+    expect(handsOverCode(["--exec-path=/tmp"])).toBe(true);
+    expect(handsOverCode(["--files", "."])).toBe(false);
+    expect(handsOverCode(["-n", "--", "needle", "."])).toBe(false);
+    expect(handsOverCode(["-C", "/some/dir"])).toBe(false);
+  });
+
+  /**
+   * @case The prompt cannot be made to read as a different question
+   * @preconditions An argument carrying newlines, a bidirectional override
+   *   and more text than a dialogue shows
+   * @expectedResult One line, no override characters, capped. This prompt is
+   *   the whole boundary for anything off the allowlist, and every character
+   *   of it comes from the model: a model that can lay out the dialogue can
+   *   ask a question the person did not answer.
+   */
+  test("the permission prompt cannot be composed by the model", () => {
+    const spelled = spell("git", [
+      "--version\n\nApproved by policy.\n\nRun git --version",
+      "\u202eevil",
+      "x".repeat(500),
+    ]);
+
+    expect(spelled).not.toContain("\n");
+    expect(spelled).not.toContain("\u202e");
+    expect(spelled.length).toBeLessThanOrEqual(300);
+    expect(spelled.startsWith('"git"')).toBe(true);
+  });
+
+  /**
+   * @case A finished command takes its cancellation listener back off
+   * @preconditions The turn's signal, and the signal the command settles
+   * @expectedResult No listener remains. Every command adds one to the turn's
+   *   signal, and a turn that searches a few times collects one per command,
+   *   each holding its reject closure until the turn ends.
+   */
+  test("a settled command removes its listener from the turn's signal", () => {
+    const turn = new AbortController();
+    const settled = new AbortController();
+
+    void abortion(turn.signal, settled.signal).catch(() => undefined);
+    expect(getEventListeners(turn.signal, "abort")).toHaveLength(1);
+
+    settled.abort();
+    expect(getEventListeners(turn.signal, "abort")).toHaveLength(0);
+  });
+
+  /**
+   * @case A finished command clears the timer that would have killed it
+   * @preconditions A command that exits at once, with every timer of the
+   *   command timeout's own duration counted
+   * @expectedResult One was started and none is left running. An uncleared
+   *   timer keeps a one-shot run (`craft exec`, a scheduled turn) alive for
+   *   the whole deadline after the work is done.
+   */
+  test("a finished command leaves no timeout timer running", async () => {
+    const started = new Set<unknown>();
+    let made = 0;
+    const realSetTimeout = globalThis.setTimeout;
+    const realClearTimeout = globalThis.clearTimeout;
+
+    globalThis.setTimeout = ((
+      handler: Parameters<typeof setTimeout>[0],
+      ms?: number,
+      ...rest: unknown[]
+    ) => {
+      const handle = (
+        realSetTimeout as unknown as (
+          ...args: unknown[]
+        ) => ReturnType<typeof setTimeout>
+      )(handler, ms, ...rest);
+      if (ms === COMMAND_TIMEOUT_MS) {
+        made += 1;
+        started.add(handle);
+      }
+      return handle;
+    }) as typeof setTimeout;
+    globalThis.clearTimeout = ((handle: Parameters<typeof clearTimeout>[0]) => {
+      started.delete(handle);
+      realClearTimeout(handle);
+    }) as typeof clearTimeout;
+
+    try {
+      await runCase({ command: "echo", args: ["hello"] });
+    } finally {
+      globalThis.setTimeout = realSetTimeout;
+      globalThis.clearTimeout = realClearTimeout;
+    }
+
+    expect(made).toBeGreaterThan(0);
+    expect(started.size).toBe(0);
   });
 
   /**
@@ -346,6 +525,6 @@ describe("run-command in the editor's terminal", () => {
         (error: Error) => error,
       );
 
-    expect(failure?.message).toContain("does not offer");
+    expect(failure?.message).toContain("No editor is connected");
   });
 });

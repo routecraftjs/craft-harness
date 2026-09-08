@@ -1,7 +1,8 @@
-import { hasSurface, surface } from "@routecraft/ai";
+import { surface } from "@routecraft/ai";
 import { craft, direct } from "@routecraft/routecraft";
+import type { ElicitationUrlMode } from "@agentclientprotocol/sdk";
 import { z } from "zod";
-import { editorCannot } from "../../../shared/editor.js";
+import { requireEditor } from "../../../shared/editor.js";
 
 /**
  * Open a link in the person's browser, through the editor.
@@ -20,7 +21,22 @@ import { editorCannot } from "../../../shared/editor.js";
  * Only http and https. A `file:` url would ask the person's browser to open
  * something on their disk chosen by a model, and every other scheme is a
  * handler registration on their machine that neither of us can see.
+ *
+ * The call below is cast, and the cast is the adapter's typing rather than
+ * this route's shape: `CreateElicitationRequest` is a union of a
+ * session-scoped arm and a request-scoped one, and the adapter removes
+ * `sessionId` because it fills that in itself. `Omit` does not distribute
+ * over a union, so removing it takes the session arm's only required field
+ * with it and the compiler is left offering the request-scoped arm. The
+ * literal is written against `UrlElicitation` first so it is still checked
+ * against the SDK's own type, and only the handover is cast.
  */
+
+/** A session-scoped URL elicitation, minus what the adapter fills in. */
+type UrlElicitation = Pick<ElicitationUrlMode, "elicitationId" | "url"> & {
+  mode: "url";
+  message: string;
+};
 
 export const OpenUrlInput = z.object({
   url: z
@@ -43,29 +59,22 @@ export default craft()
   .input({ body: OpenUrlInput })
   .from<OpenUrlInput>(direct())
   .transform(async (input, exchange) => {
-    if (!hasSurface(exchange)) {
-      throw new Error(
-        editorCannot("a connection to your editor", "opening a link"),
-      );
-    }
+    requireEditor(exchange, "opening a link");
+
+    const request = {
+      mode: "url",
+      elicitationId: `open-${Date.now()}`,
+      url: input.url,
+      message: input.message,
+    } satisfies UrlElicitation;
 
     try {
-      // The cast is the adapter's typing rather than this route's shape.
-      // `CreateElicitationRequest` is a union of a session-scoped arm and a
-      // request-scoped one, and the adapter removes `sessionId` because it
-      // fills that in itself. Removing it from the union takes the
-      // session arm's only required field with it, so the compiler is left
-      // offering the request-scoped arm and demanding a `requestId` that
-      // means something else entirely. The value below is the correct
-      // session-scoped URL elicitation.
-      await surface("elicitation/create", {
-        mode: "url",
-        elicitationId: `open-${Date.now()}`,
-        url: input.url,
-        message: input.message,
-      } as unknown as Parameters<
-        typeof surface<"elicitation/create">
-      >[1]).fetch(exchange);
+      await surface(
+        "elicitation/create",
+        request as unknown as Parameters<
+          typeof surface<"elicitation/create">
+        >[1],
+      ).fetch(exchange);
       return { url: input.url, opened: true };
     } catch (error: unknown) {
       // An editor that does not implement URL elicitation is a smaller

@@ -106,8 +106,10 @@ const envSchema = z.object({
   // What `run-command` may run in the editor's terminal without asking. It
   // runs as the person, with their files and their network, so this list is
   // the boundary rather than a convenience. Anything not on it raises a
-  // permission prompt in the editor before anything runs.
-  RUN_COMMAND_ALLOWLIST: listOf("git,rg,ls,cat,pwd,bun,echo"),
+  // permission prompt in the editor before anything runs. Only programs that
+  // cannot be told to run something else belong here: `bun`, `git`, `node`
+  // and `cat` are each a way around the list rather than an entry on it.
+  RUN_COMMAND_ALLOWLIST: listOf("rg,ls,pwd,echo"),
   // How long a command may run in the editor's terminal before it is killed
   // and reported as timed out. Fixed per instance rather than per call: a
   // caller that can raise its own deadline has no deadline.

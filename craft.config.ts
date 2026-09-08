@@ -84,6 +84,13 @@ const apiKeyAuth = {
  * `Bash` is an alias: the fn registry maps that familiar name onto the
  * `bash-runner` capability, so the model sees a name it knows while the
  * thing it reaches is an ordinary route in this repository.
+ *
+ * The editor capabilities are listed unconditionally. Every one of them is a
+ * call OUT to the person's editor, so each refuses at the call when there is
+ * no editor connected or it does not implement what the capability needs.
+ * `ask-permission` is deliberately not among them: it is the question the
+ * write and command capabilities ask, and a model that could call it directly
+ * could spend a person's attention with it.
  */
 export const ARIA_TOOLS = [
   "Bash",
@@ -100,12 +107,6 @@ export const ARIA_TOOLS = [
   "Direct(request-approval)",
   "Direct(compact)",
   "Direct(mail-reply)",
-  // The editor capabilities. Every one of them is a call OUT to the person's
-  // editor, so each is offered unconditionally and refuses at the call when
-  // the editor does not implement what it needs. `ask-permission` is
-  // deliberately absent: it is the question the write and command
-  // capabilities ask, and a model that could call it directly could spend a
-  // person's attention with it.
   "Direct(read-file)",
   "Direct(write-file)",
   "Direct(edit-file)",

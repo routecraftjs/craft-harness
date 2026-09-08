@@ -1,8 +1,11 @@
-import { hasSurface, surface } from "@routecraft/ai";
+import { surface } from "@routecraft/ai";
 import { craft, direct } from "@routecraft/routecraft";
 import { z } from "zod";
-import { FILE_CHARACTER_LIMIT, editorCannot } from "../../../shared/editor.js";
-import { pathRefusal } from "../../../shared/editor-paths.js";
+import {
+  FILE_CHARACTER_LIMIT,
+  requireEditor,
+} from "../../../shared/editor.js";
+import { EditorPath } from "../../../shared/editor-paths.js";
 import { askPermission } from "../ask-permission/route.js";
 
 /**
@@ -11,28 +14,37 @@ import { askPermission } from "../ask-permission/route.js";
  * ACP has no edit primitive. This is the composition of the three calls it
  * does have: read the file, apply the replacement here, write it back. The
  * fourth thing it does is the reason the capability exists rather than the
- * model being told to read and write itself: the change is reported to the
- * editor as a DIFF on the tool call, so JetBrains renders it as a diff the
- * person can look at instead of a wall of new file content.
+ * model being told to read and write itself: the change is carried as a DIFF
+ * on the permission request, so JetBrains renders it as a diff the person
+ * looks at while they answer instead of a wall of new file content.
  *
- * The diff is pushed before the write, not after. A person who is about to
- * be asked whether to allow a change should be looking at the change while
- * they answer.
+ * The diff rides ON the request rather than being pushed as a separate
+ * update. A `tool_call_update` would have to name a tool call id, and this
+ * route cannot reach the one the adapter assigned; a client that is handed an
+ * id it has never seen is free to drop the update, which would leave the
+ * person answering "apply the change" having been shown nothing.
  *
  * `find` must appear exactly once. A replacement that matched twice would
  * change something the model did not look at, and one that matched nothing
  * is a model working from a stale read; both are refusals rather than a
  * best effort.
+ *
+ * ## The file is read twice
+ *
+ * The write is a whole-file replacement built from a read taken before the
+ * person was asked, and the gap between the two is however long they spend
+ * looking at the diff. They are, by construction, sitting in the editor with
+ * this file open. So the file is read again after they answer, and a change
+ * in between is refused rather than reverted: typing, a formatter on save, or
+ * a checkout in another pane would otherwise be silently undone by a click
+ * that meant something else.
+ *
+ * Unlike `read-file` this cannot ask the editor for a line limit, because it
+ * writes the whole file back and a partial read would truncate it.
  */
 
 export const EditFileInput = z.object({
-  path: z
-    .string()
-    .min(1)
-    .refine((value) => pathRefusal(value) === undefined, {
-      error: (issue) => pathRefusal(String(issue.input)) ?? "Refused.",
-    })
-    .describe("Absolute path to the file, inside the open project."),
+  path: EditorPath,
   find: z
     .string()
     .min(1)
@@ -70,15 +82,11 @@ export default craft()
   .input({ body: EditFileInput })
   .from<EditFileInput>(direct())
   .transform(async (input, exchange) => {
-    if (!hasSurface(exchange)) {
-      throw new Error(
-        editorCannot("a connection to your editor", "editing a file"),
-      );
-    }
+    requireEditor(exchange, "editing a file");
 
-    const before = (await surface("fs/read_text_file", {
+    const before = await surface("fs/read_text_file", {
       path: input.path,
-    }).fetch(exchange)) as { content: string };
+    }).fetch(exchange);
 
     const found = locate(before.content, input.find);
     if ("refusal" in found) throw new Error(found.refusal);
@@ -94,32 +102,32 @@ export default craft()
       );
     }
 
-    // The diff, before the question, so the person answers while looking at
-    // the change rather than at its description.
-    await surface
-      .notify(() => ({
-        sessionUpdate: "tool_call_update" as const,
-        toolCallId: `edit-${input.path}`,
-        content: [
-          {
-            type: "diff" as const,
-            path: input.path,
-            oldText: before.content,
-            newText: after,
-          },
-        ],
-      }))
-      .send(exchange);
-
-    const allowed = await askPermission(exchange, {
-      title: `Apply the change to ${input.path}`,
-      kind: "edit",
-    });
+    const allowed = await askPermission(
+      exchange,
+      { title: `Apply the change to ${input.path}`, kind: "edit" },
+      [
+        {
+          type: "diff",
+          path: input.path,
+          oldText: before.content,
+          newText: after,
+        },
+      ],
+    );
     if (!allowed) {
       return {
         path: input.path,
         refused: "You did not allow this change, so the file is unchanged.",
       };
+    }
+
+    const current = await surface("fs/read_text_file", {
+      path: input.path,
+    }).fetch(exchange);
+    if (current.content !== before.content) {
+      throw new Error(
+        `${input.path} changed while you were being asked, so this edit was not applied: it would have reverted that change. Read the file again and edit from what is there now.`,
+      );
     }
 
     await surface("fs/write_text_file", {

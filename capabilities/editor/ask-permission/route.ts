@@ -1,6 +1,8 @@
 import { surface } from "@routecraft/ai";
 import { type Exchange, craft, direct } from "@routecraft/routecraft";
+import type { ToolCallContent } from "@agentclientprotocol/sdk";
 import { z } from "zod";
+import { readable } from "../../../shared/editor.js";
 
 /**
  * Ask the person, in the conversation they already have open.
@@ -27,6 +29,13 @@ import { z } from "zod";
  * never offered all arrive as the protocol's `cancelled` outcome. Only an
  * explicit selection of the allow option returns true, so every other
  * ending, including an editor that answers nonsense, denies.
+ *
+ * The response is left with the type `surface()` gives it rather than cast to
+ * a hand-written shape. `RequestPermissionOutcome` is a discriminated union,
+ * and widening it would leave the two comparisons that ARE the allow decision
+ * unchecked: a renamed discriminant would then compile and silently deny
+ * every request forever, which is the failure a fail-closed default hides
+ * best.
  */
 
 export const AskPermissionInput = z.object({
@@ -47,22 +56,28 @@ const ALLOW = "allow";
  * Exported as a function because the capabilities that need it are asking
  * as part of their own work rather than dispatching a separate step, and
  * the answer has to come back before they decide what to do next.
+ *
+ * `content` rides on the request rather than being pushed as a separate
+ * update, so a client cannot show the question without the diff it is about.
  */
 export async function askPermission(
   exchange: Exchange<unknown>,
   input: AskPermissionInput,
+  content?: ToolCallContent[],
 ): Promise<boolean> {
-  const answer = (await surface("session/request_permission", {
+  const title = readable(input.title);
+  const answer = await surface("session/request_permission", {
     toolCall: {
       toolCallId: `ask-${Date.now()}`,
-      title: input.title,
+      title,
       kind: input.kind,
+      ...(content === undefined ? {} : { content }),
     },
     options: [
-      { optionId: ALLOW, name: input.title, kind: "allow_once" },
+      { optionId: ALLOW, name: title, kind: "allow_once" },
       { optionId: "deny", name: "No", kind: "reject_once" },
     ],
-  }).fetch(exchange)) as { outcome: { outcome: string; optionId?: string } };
+  }).fetch(exchange);
 
   return (
     answer.outcome.outcome === "selected" && answer.outcome.optionId === ALLOW

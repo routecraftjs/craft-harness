@@ -1,8 +1,11 @@
-import { hasSurface, surface } from "@routecraft/ai";
+import { surface } from "@routecraft/ai";
 import { craft, direct } from "@routecraft/routecraft";
 import { z } from "zod";
-import { FILE_CHARACTER_LIMIT, editorCannot } from "../../../shared/editor.js";
-import { pathRefusal } from "../../../shared/editor-paths.js";
+import {
+  FILE_CHARACTER_LIMIT,
+  requireEditor,
+} from "../../../shared/editor.js";
+import { EditorPath } from "../../../shared/editor-paths.js";
 import { askPermission } from "../ask-permission/route.js";
 
 /**
@@ -19,13 +22,7 @@ import { askPermission } from "../ask-permission/route.js";
  */
 
 export const WriteFileInput = z.object({
-  path: z
-    .string()
-    .min(1)
-    .refine((value) => pathRefusal(value) === undefined, {
-      error: (issue) => pathRefusal(String(issue.input)) ?? "Refused.",
-    })
-    .describe("Absolute path to the file, inside the open project."),
+  path: EditorPath,
   content: z
     .string()
     .max(FILE_CHARACTER_LIMIT)
@@ -41,11 +38,7 @@ export default craft()
   .input({ body: WriteFileInput })
   .from<WriteFileInput>(direct())
   .transform(async (input, exchange) => {
-    if (!hasSurface(exchange)) {
-      throw new Error(
-        editorCannot("a connection to your editor", "writing a file"),
-      );
-    }
+    requireEditor(exchange, "writing a file");
 
     const allowed = await askPermission(exchange, {
       title: `Write ${input.path}`,

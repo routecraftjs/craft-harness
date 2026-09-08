@@ -6,6 +6,7 @@ import readFile, {
 } from "../capabilities/editor/read-file/route.js";
 import updatePlan from "../capabilities/editor/update-plan/route.js";
 import writeFile from "../capabilities/editor/write-file/route.js";
+import { FILE_LINE_LIMIT } from "../shared/editor.js";
 import { pathRefusal } from "../shared/editor-paths.js";
 import { runWithScriptedEditor } from "./support/scripted-editor.js";
 
@@ -80,13 +81,42 @@ describe("the editor's files", () => {
       routes,
       route: "read-file",
       input: { path: "/project/notes.md" },
-      files: { "/project/notes.md": "the contents" },
+      editorFiles: { "/project/notes.md": "the contents" },
     });
 
     expect(run.callsTo("fs/read_text_file")[0]?.params["path"]).toBe(
       "/project/notes.md",
     );
     expect(run.toolOutput?.["content"]).toBe("the contents");
+  });
+
+  /**
+   * @case A big file is bounded at the editor, not after it arrives
+   * @preconditions A file longer than the harness will take
+   * @expectedResult The read carried a line limit, and the file is refused
+   *   rather than answered short. Asking for the bound is what stops a
+   *   gigabyte being read, serialised, sent and buffered here only to be
+   *   turned down; refusing rather than truncating is what stops a model
+   *   reasoning about a file it thinks it read.
+   */
+  test("a file over the line limit is refused, and the limit was asked for", async () => {
+    const run = await runWithScriptedEditor({
+      routes,
+      route: "read-file",
+      input: { path: "/project/big.log" },
+      editorFiles: {
+        "/project/big.log": Array.from(
+          { length: FILE_LINE_LIMIT + 500 },
+          (_unused, line) => `line ${line}`,
+        ).join("\n"),
+      },
+    });
+
+    expect(run.callsTo("fs/read_text_file")[0]?.params["limit"]).toBe(
+      FILE_LINE_LIMIT + 1,
+    );
+    expect(run.toolFailed).toBe(true);
+    expect(run.modelSaw).toContain("longer than");
   });
 
   /**
@@ -101,13 +131,13 @@ describe("the editor's files", () => {
       routes,
       route: "write-file",
       input: { path: "/project/notes.md", content: "new" },
-      files: { "/project/notes.md": "old" },
+      editorFiles: { "/project/notes.md": "old" },
       permission: () => ({ outcome: "cancelled" }),
     });
 
     expect(run.callsTo("session/request_permission")).toHaveLength(1);
     expect(run.callsTo("fs/write_text_file")).toHaveLength(0);
-    expect(run.files["/project/notes.md"]).toBe("old");
+    expect(run.editorFiles["/project/notes.md"]).toBe("old");
     expect(run.toolOutput?.["refused"]).toBeDefined();
   });
 
@@ -121,21 +151,26 @@ describe("the editor's files", () => {
       routes,
       route: "write-file",
       input: { path: "/project/notes.md", content: "new" },
-      files: { "/project/notes.md": "old" },
+      editorFiles: { "/project/notes.md": "old" },
     });
 
     expect(run.written["/project/notes.md"]).toBe("new");
   });
 
   /**
-   * @case An edit reports the change as a diff before asking
+   * @case An edit carries its diff on the question itself
    * @preconditions A file with the text to replace in it
-   * @expectedResult A `tool_call_update` carrying diff content with the old
-   *   and new text arrives BEFORE the permission request, so JetBrains
-   *   renders the change and the person answers while looking at it rather
-   *   than at a description of it.
+   * @expectedResult The permission request carries diff content with the old
+   *   and new text, so JetBrains renders the change in the same object as the
+   *   question and the person answers while looking at it.
+   *
+   *   On the request rather than as a separate `tool_call_update`: an update
+   *   has to name a tool call id, this route cannot reach the one the adapter
+   *   assigned, and a client handed an id it has never seen is free to drop
+   *   the update. That would leave the person answering "apply the change"
+   *   having been shown nothing, with nothing here able to notice.
    */
-  test("an edit sends a diff, then asks, then writes", async () => {
+  test("an edit asks with the diff attached, then writes", async () => {
     const run = await runWithScriptedEditor({
       routes,
       route: "edit-file",
@@ -144,22 +179,56 @@ describe("the editor's files", () => {
         find: "const a = 1;",
         replace: "const a = 2;",
       },
-      files: { "/project/a.ts": "const a = 1;\nconst b = 3;\n" },
+      editorFiles: { "/project/a.ts": "const a = 1;\nconst b = 3;\n" },
     });
 
-    const diffAt = run.calls.findIndex(
-      (call) =>
-        call.method === "session/update" &&
-        JSON.stringify(call.params).includes('"type":"diff"'),
-    );
-    const askAt = run.calls.findIndex(
-      (call) => call.method === "session/request_permission",
-    );
+    const ask = run.callsTo("session/request_permission")[0];
+    const diff = (
+      (ask?.params["toolCall"] as { content?: Array<Record<string, unknown>> })
+        ?.content ?? []
+    ).find((block) => block["type"] === "diff");
 
-    expect(diffAt).toBeGreaterThanOrEqual(0);
-    expect(askAt).toBeGreaterThan(diffAt);
+    expect(diff).toMatchObject({
+      path: "/project/a.ts",
+      oldText: "const a = 1;\nconst b = 3;\n",
+      newText: "const a = 2;\nconst b = 3;\n",
+    });
     expect(run.written["/project/a.ts"]).toBe("const a = 2;\nconst b = 3;\n");
-    expect(JSON.stringify(run.calls[diffAt])).toContain("const a = 2;");
+  });
+
+  /**
+   * @case A file changed while the person was answering is not reverted
+   * @preconditions The file edited under the prompt, which is where the
+   *   person is: they are sitting in this editor with this file open, and
+   *   the gap is however long they take to read the diff
+   * @expectedResult The write never happens and the model is told why. The
+   *   route computes the whole new file from a read taken BEFORE the
+   *   question, so writing it afterwards would revert their typing, their
+   *   formatter, or a checkout in another pane, silently, on a click that
+   *   meant "yes, that diff".
+   */
+  test("an edit refuses when the file changed under the prompt", async () => {
+    const run = await runWithScriptedEditor({
+      routes,
+      route: "edit-file",
+      input: {
+        path: "/project/a.ts",
+        find: "const a = 1;",
+        replace: "const a = 2;",
+      },
+      editorFiles: { "/project/a.ts": "const a = 1;\nconst b = 3;\n" },
+      permission: (_params, editorFiles) => {
+        editorFiles["/project/a.ts"] = "const a = 1;\nconst b = 4;\n";
+        return { outcome: "selected", optionId: "allow" };
+      },
+    });
+
+    expect(run.callsTo("fs/write_text_file")).toHaveLength(0);
+    expect(run.editorFiles["/project/a.ts"]).toBe(
+      "const a = 1;\nconst b = 4;\n",
+    );
+    expect(run.toolFailed).toBe(true);
+    expect(run.modelSaw).toContain("changed while you were being asked");
   });
 
   /**
@@ -173,7 +242,7 @@ describe("the editor's files", () => {
       routes,
       route: "edit-file",
       input: { path: "/project/a.ts", find: "x", replace: "y" },
-      files: { "/project/a.ts": "x and x" },
+      editorFiles: { "/project/a.ts": "x and x" },
     });
 
     expect(run.toolFailed).toBe(true);
@@ -192,7 +261,7 @@ describe("the editor's files", () => {
       routes,
       route: "edit-file",
       input: { path: "/project/a.ts", find: "gone", replace: "y" },
-      files: { "/project/a.ts": "something else" },
+      editorFiles: { "/project/a.ts": "something else" },
     });
 
     expect(run.toolFailed).toBe(true);

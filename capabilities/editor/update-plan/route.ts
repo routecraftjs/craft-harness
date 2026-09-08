@@ -1,7 +1,7 @@
-import { hasSurface, surface } from "@routecraft/ai";
+import { surface } from "@routecraft/ai";
 import { craft, direct } from "@routecraft/routecraft";
 import { z } from "zod";
-import { editorCannot } from "../../../shared/editor.js";
+import { requireEditor } from "../../../shared/editor.js";
 
 /**
  * Show the person the plan, and tick it over as the work goes.
@@ -53,11 +53,7 @@ export default craft()
   .input({ body: UpdatePlanInput })
   .from<UpdatePlanInput>(direct())
   .transform(async (input, exchange) => {
-    if (!hasSurface(exchange)) {
-      throw new Error(
-        editorCannot("a connection to your editor", "showing a plan"),
-      );
-    }
+    requireEditor(exchange, "showing a plan");
 
     await surface
       .notify(() => ({

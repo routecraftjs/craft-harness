@@ -66,10 +66,25 @@ export interface ScriptedEditorOptions {
    * no terminal.
    */
   capabilities?: ClientCapabilities;
-  /** How the editor answers a permission request. Defaults to allowing. */
-  permission?: (params: Record<string, unknown>) => RequestPermissionOutcome;
-  /** Files the editor will serve to `fs/read_text_file`, by absolute path. */
-  files?: Record<string, string>;
+  /**
+   * How the editor answers a permission request. Defaults to allowing.
+   *
+   * The editor's live file map is the second argument, so a case can change a
+   * file while the person is being asked, which is the one moment a
+   * read-modify-write capability cannot see.
+   */
+  permission?: (
+    params: Record<string, unknown>,
+    editorFiles: Record<string, string>,
+  ) => RequestPermissionOutcome;
+  /**
+   * Files the editor serves to `fs/read_text_file`, by ABSOLUTE path.
+   *
+   * These exist only inside this editor. They are what `read-file`,
+   * `write-file` and `edit-file` see, and they are invisible to anything run
+   * through `terminal/create`.
+   */
+  editorFiles?: Record<string, string>;
   /**
    * Cancel the turn the first time this method is received.
    *
@@ -87,8 +102,14 @@ export interface ScriptedEditorOptions {
    * away along with the thing being hidden.
    */
   absent?: string[];
-  /** Files to write into the project before the turn, by relative path. */
-  seed?: Record<string, string>;
+  /**
+   * Files written to real disk in the project, by RELATIVE path.
+   *
+   * These are what a command run through `terminal/create` sees, and they are
+   * invisible to the `fs/*` calls, which this editor answers from
+   * `editorFiles` above.
+   */
+  projectFiles?: Record<string, string>;
   /** Make the project a git repository with the seeded files committed. */
   gitInit?: boolean;
   /**
@@ -113,7 +134,7 @@ export interface ScriptedEditorRun {
   /** How the prompt turn ended, e.g. `end_turn`, `cancelled`, `refusal`. */
   stopReason: string;
   /** Files the editor holds after the turn, by absolute path. */
-  files: Record<string, string>;
+  editorFiles: Record<string, string>;
   /** Contents the agent wrote through `fs/write_text_file`. */
   written: Record<string, string>;
   /**
@@ -252,7 +273,7 @@ export async function runWithScriptedEditor(
   options: ScriptedEditorOptions,
 ): Promise<ScriptedEditorRun> {
   const cwd = await mkdtemp(join(tmpdir(), "scripted-editor-"));
-  for (const [name, content] of Object.entries(options.seed ?? {})) {
+  for (const [name, content] of Object.entries(options.projectFiles ?? {})) {
     await writeFile(join(cwd, name), content);
   }
   if (options.gitInit === true) {
@@ -266,7 +287,7 @@ export async function runWithScriptedEditor(
     }
   }
   const calls: RecordedCall[] = [];
-  const files: Record<string, string> = { ...(options.files ?? {}) };
+  const files: Record<string, string> = { ...(options.editorFiles ?? {}) };
   const written: Record<string, string> = {};
   const terminals = new Map<string, Terminal>();
   const seen = { prompt: "" };
@@ -365,7 +386,13 @@ export async function runWithScriptedEditor(
         if (content === undefined) {
           throw new Error(`No such file: ${params.path}`);
         }
-        return { content };
+        // `limit` is honoured rather than ignored, because a capability that
+        // asks for a bound and is handed the whole file anyway would pass a
+        // test it should not: the point of the bound is that the file never
+        // reaches this process.
+        const limit = params.limit ?? undefined;
+        if (typeof limit !== "number") return { content };
+        return { content: content.split("\n").slice(0, limit).join("\n") };
       })
       .onRequest("fs/write_text_file", async ({ params }) => {
         record("fs/write_text_file", params);
@@ -377,6 +404,7 @@ export async function runWithScriptedEditor(
         record("session/request_permission", params);
         const answer = options.permission?.(
           params as unknown as Record<string, unknown>,
+          files,
         );
         return {
           outcome: answer ?? { outcome: "selected", optionId: "allow" },
@@ -415,7 +443,7 @@ export async function runWithScriptedEditor(
       callsTo: (method) => calls.filter((call) => call.method === method),
       text: textFrom(calls),
       stopReason: String(result.stopReason),
-      files,
+      editorFiles: files,
       written,
       toolOutput: call.output,
       toolFailed: call.failed,
