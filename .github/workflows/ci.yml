@@ -53,6 +53,18 @@ jobs:
           # instead of at the top of the next minute.
           SCHEDULER_CRON: "*/2 * * * * *"
         run: bun run boot-check
+      - name: The editor door answers, and only with the key
+        env:
+          LLM_API_KEY: not-a-real-key
+        run: |
+          # Own process group, so the trap reaches `craft start` and not just
+          # the `bun run` wrapper that spawned it.
+          set -m
+          NODE_ENV=development bun run start &
+          instance=$!
+          trap 'kill -- -"$instance" 2>/dev/null || true' EXIT
+          bun run scripts/check-editor-door.ts
+
       - name: The generated credentials never reach the repository
         run: |
           test -z "$(git status --porcelain)" || {

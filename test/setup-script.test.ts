@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 
 /**
  * The one command between a clone and a running instance.
@@ -20,28 +20,50 @@ describe("bun run setup", () => {
 
   beforeEach(async () => {
     scratch = await mkdtemp(join(tmpdir(), "harness-setup-"));
-    await mkdir(join(scratch, "scripts"), { recursive: true });
-    await writeFile(
-      join(scratch, "scripts", "setup.ts"),
-      await readFile(new URL("../scripts/setup.ts", import.meta.url), "utf8"),
-    );
+    // The script and the one module it imports, and nothing else. Setup is
+    // run in isolation because what it does is decide which files exist
+    // afterwards, and a copy of the repository would hide that.
+    for (const file of ["scripts/setup.ts", "shared/defaults.ts"]) {
+      await mkdir(join(scratch, dirname(file)), { recursive: true });
+      await writeFile(
+        join(scratch, file),
+        await readFile(new URL(`../${file}`, import.meta.url), "utf8"),
+      );
+    }
   });
 
   afterEach(async () => {
     await rm(scratch, { recursive: true, force: true });
   });
 
-  const run = async (): Promise<string> => {
+  const run = async (env?: Record<string, string>): Promise<string> => {
     const proc = Bun.spawn(
       ["bun", "run", join(scratch, "scripts", "setup.ts")],
       {
         cwd: scratch,
         stdout: "pipe",
         stderr: "pipe",
+        ...(env === undefined ? {} : { env: { ...process.env, ...env } }),
       },
     );
     await proc.exited;
     return await new Response(proc.stdout).text();
+  };
+
+  /**
+   * A PATH holding exactly what a case means it to hold, plus the runtime's
+   * own directory. Replacing PATH outright takes `bun` off it too, so the
+   * subprocess never starts and the case fails for the wrong reason.
+   */
+  const pathWith = (...dirs: string[]): string =>
+    [...dirs, dirname(process.execPath)].join(delimiter);
+
+  /** A `craft` on PATH, so the printed entry has something to resolve. */
+  const fakeCraftOnPath = async (): Promise<string> => {
+    const bin = join(scratch, "fake-bin");
+    await mkdir(bin, { recursive: true });
+    await writeFile(join(bin, "craft"), "#!/bin/sh\n", { mode: 0o755 });
+    return bin;
   };
 
   const envValue = async (name: string): Promise<string> => {
@@ -70,6 +92,162 @@ describe("bun run setup", () => {
     );
     expect(settings).toContain(`token: ${await envValue("CRAFT_API_KEY")}`);
     expect(settings).toContain("url: http://127.0.0.1:9090");
+  });
+
+  /**
+   * @case The editor profile is written beside the ops entry
+   * @preconditions A fresh directory
+   * @expectedResult `profiles.editor` carries the ACP address, the same
+   *   credential, and aria, because `craft acp --profile editor` reads all
+   *   three from there and the pasted editor entry carries none of them
+   */
+  test("writes the editor profile", async () => {
+    await run();
+
+    const settings = await readFile(
+      join(scratch, ".routecraft", "settings.yaml"),
+      "utf8",
+    );
+    const key = await envValue("CRAFT_API_KEY");
+    expect(settings).toContain("profiles:");
+    expect(settings).toContain("  editor:");
+    expect(settings).toContain("    url: http://127.0.0.1:8082");
+    expect(settings).toContain(`    token: ${key}`);
+    expect(settings).toContain("    agent: aria");
+  });
+
+  /**
+   * @case A settings file written before the editor profile existed gains it
+   * @preconditions The ops-only file setup used to write, carrying the key
+   *   .env already holds
+   * @expectedResult Rewritten rather than kept, because a token match alone
+   *   used to be the whole test and would now leave a person with an editor
+   *   entry pointing at a profile that is not there
+   */
+  test("adds the editor profile to a settings file that predates it", async () => {
+    await run();
+    const key = await envValue("CRAFT_API_KEY");
+    await writeFile(
+      join(scratch, ".routecraft", "settings.yaml"),
+      `url: http://127.0.0.1:9090\ntoken: ${key}\n`,
+    );
+
+    await run();
+
+    const settings = await readFile(
+      join(scratch, ".routecraft", "settings.yaml"),
+      "utf8",
+    );
+    expect(settings).toContain("    agent: aria");
+    expect(settings).toContain(`token: ${key}`);
+  });
+
+  /**
+   * @case A blank port falls back rather than rendering a url with no port
+   * @preconditions An .env carrying ACP_PORT and OPS_PORT as empty lines
+   * @expectedResult Both urls carry the default port. A present-but-empty
+   *   value passes straight through `??`, which used to write
+   *   `url: http://127.0.0.1:` and fail inside the editor with nothing
+   *   naming the cause.
+   */
+  test("falls back when a port line is present but empty", async () => {
+    await writeFile(join(scratch, ".env"), "ACP_PORT=\nOPS_PORT=\n");
+
+    await run();
+
+    const settings = await readFile(
+      join(scratch, ".routecraft", "settings.yaml"),
+      "utf8",
+    );
+    expect(settings).toContain("url: http://127.0.0.1:9090");
+    expect(settings).toContain("    url: http://127.0.0.1:8082");
+    expect(settings).not.toContain("127.0.0.1:\n");
+  });
+
+  /**
+   * @case A port that is not a number is refused, naming the variable
+   * @preconditions An .env carrying a typo'd port
+   * @expectedResult Setup fails rather than writing the typo into the profile
+   *   as a url nothing listens on
+   */
+  test("refuses a port that is not a port", async () => {
+    await writeFile(join(scratch, ".env"), "ACP_PORT=80o2\n");
+
+    const output = await run();
+
+    expect(output).not.toContain("Wrote  .routecraft");
+    expect(existsSync(join(scratch, ".routecraft", "settings.yaml"))).toBe(
+      false,
+    );
+  });
+
+  /**
+   * @case A blanked secret written with surrounding space is really refilled
+   * @preconditions An .env whose key line is indented, which the parser
+   *   accepts as present-and-empty
+   * @expectedResult The line is refilled with a full-length secret. The
+   *   refill pattern used to be narrower than the parser's, so the replace
+   *   matched nothing, the run still reported the secret written, and the
+   *   settings file was rewritten carrying an empty token.
+   */
+  test("refills a blanked secret the parser accepted", async () => {
+    await writeFile(join(scratch, ".env"), "  CRAFT_API_KEY=\n");
+
+    const output = await run();
+
+    expect(output).toContain("Wrote  .env CRAFT_API_KEY");
+    expect((await envValue("CRAFT_API_KEY")).length).toBeGreaterThanOrEqual(32);
+    const settings = await readFile(
+      join(scratch, ".routecraft", "settings.yaml"),
+      "utf8",
+    );
+    expect(settings).not.toContain("token: \n");
+  });
+
+  /**
+   * @case A file named craft that cannot be executed is not offered as one
+   * @preconditions A non-executable `craft` on PATH and none in node_modules
+   * @expectedResult Setup says it could not find the binary. Printing the
+   *   path would put a command in the editor's settings that fails to
+   *   launch, which is the failure the message exists to prevent.
+   */
+  test("ignores a craft on PATH that is not executable", async () => {
+    const bin = join(scratch, "fake-bin");
+    await mkdir(bin, { recursive: true });
+    await writeFile(join(bin, "craft"), "#!/bin/sh\n", { mode: 0o644 });
+
+    const output = await run({ PATH: pathWith(bin) });
+
+    expect(output).toContain("could not find the `craft` binary");
+  });
+
+  /**
+   * @case The printed editor entry carries an absolute command
+   * @preconditions A `craft` reachable on PATH and none in node_modules
+   * @expectedResult The full path and the profile flag, because JetBrains
+   *   launches the command with no shell and a bare `craft` resolves to
+   *   nothing there
+   */
+  test("prints the editor entry with the full path to craft", async () => {
+    const bin = await fakeCraftOnPath();
+
+    const output = await run({ PATH: pathWith(bin) });
+
+    expect(output).toContain(`command: ${join(bin, "craft")}`);
+    expect(output).toContain("arguments: acp --profile editor");
+  });
+
+  /**
+   * @case A missing binary is said rather than printed as a broken entry
+   * @preconditions No `craft` in node_modules and none on PATH
+   * @expectedResult The reason and the fix, because an entry naming a command
+   *   that is not there fails inside the editor with nothing to read
+   */
+  test("says so when craft cannot be found", async () => {
+    const output = await run({ PATH: pathWith(join(scratch, "empty")) });
+
+    expect(output).toContain("could not find the `craft` binary");
+    expect(output).not.toContain("arguments: acp --profile editor");
   });
 
   /**
