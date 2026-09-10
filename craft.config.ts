@@ -190,10 +190,10 @@ export const craftConfig: CraftConfig = defineConfig({
     tiers: { introspection: "ops:introspection", dispatch: "ops:dispatch" },
   },
 
-  suspension: {
+  deferral: {
     // Parked approvals must outlive a restart, which is the entire point of
     // parking them. The default store is SQLite where a driver is available.
-    secret: env.ROUTECRAFT_SUSPENSION_SECRET,
+    secret: env.ROUTECRAFT_DEFERRAL_SECRET,
   },
 
   llm: {

@@ -22,7 +22,7 @@
 process.env["NODE_ENV"] = "test";
 process.env["LLM_API_KEY"] = "test-key-not-a-real-one";
 process.env["CRAFT_API_KEY"] = "test-api-key-at-least-thirty-two-chars";
-process.env["ROUTECRAFT_SUSPENSION_SECRET"] =
+process.env["ROUTECRAFT_DEFERRAL_SECRET"] =
   "test-secret-at-least-thirty-two-bytes-long";
 
 /**

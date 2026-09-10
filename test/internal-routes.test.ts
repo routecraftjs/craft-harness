@@ -11,7 +11,7 @@ import transcriptOwner from "../capabilities/chat/transcript-owner/route.js";
  *
  * `approval-park` carries no `.authorize()` and no useful answer for an
  * outside caller: it exists so `request-approval` can hand back a link, and
- * a direct caller would get the framework's suspension acknowledgment. That
+ * a direct caller would get the framework's deferral acknowledgment. That
  * is what `direct({ internal: true })` declares, and this is the test that
  * the declaration is doing something rather than decorating the file.
  */
@@ -34,7 +34,7 @@ describe("internal routes", () => {
     t = await testContext()
       // A route that can park needs somewhere to park; the defaults are
       // in-memory under testContext, which is what a test wants.
-      .with({ suspension: {} })
+      .with({ deferral: {} })
       .routes([approvalPark, requestApproval])
       .build();
     await t.startAndWaitReady();
@@ -47,7 +47,7 @@ describe("internal routes", () => {
   /**
    * @case The internal route is still reachable in process
    * @preconditions The same context, dispatching the internal route by name
-   * @expectedResult It parks and answers with the suspension acknowledgment.
+   * @expectedResult It parks and answers with the deferral acknowledgment.
    *   That is the whole contract: internal closes the ops door and the agent
    *   tool surface, and changes nothing for a caller inside the process,
    *   which is how `request-approval` gets its link.
@@ -56,7 +56,7 @@ describe("internal routes", () => {
     t = await testContext()
       // A route that can park needs somewhere to park; the defaults are
       // in-memory under testContext, which is what a test wants.
-      .with({ suspension: {} })
+      .with({ deferral: {} })
       .routes([approvalPark, requestApproval])
       .build();
     await t.startAndWaitReady();
@@ -71,7 +71,7 @@ describe("internal routes", () => {
       session: "demo",
     });
 
-    expect(parked.status).toBe("suspended");
+    expect(parked.status).toBe("deferred");
     expect(typeof parked.token).toBe("string");
   });
 

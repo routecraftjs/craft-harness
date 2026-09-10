@@ -11,14 +11,14 @@ import {
  * The parked half of an approval.
  *
  * This route exists to hold an exchange still while a human thinks. It
- * parks at `.suspend()`, and everything after that line runs when someone
+ * parks at `.defer()`, and everything after that line runs when someone
  * answers, possibly days later and certainly in a different process.
  *
  * ## Why it is internal
  *
  * It exists to be called by `request-approval` and by nothing else. It
  * carries no `.authorize()` because its caller does, and its answer to a
- * direct caller is the framework's suspension acknowledgment rather than
+ * direct caller is the framework's deferral acknowledgment rather than
  * anything a person or a model could use. `direct({ internal: true })` says
  * that out loud: the in-process endpoint stays, so `request-approval` calls
  * it exactly as before, and both external doors close. It is absent from
@@ -29,7 +29,7 @@ import {
  *
  * ## Why the scope check is here and not in the resume hook
  *
- * `.suspend({ meta })` takes a value, not a function of the exchange, so
+ * `.defer({ meta })` takes a value, not a function of the exchange, so
  * `meta` describes the SITE rather than the request: it can say "only a
  * configured approver may answer this", which is what `approval-callback`'s
  * hook enforces before the token is spent. It cannot say which scope THIS
@@ -49,7 +49,7 @@ export default craft()
   .description("Hold a request until a human approves or denies it.")
   .input({ body: ApprovalRequest })
   .from<ApprovalRequest>(direct({ internal: true }))
-  .suspend({
+  .defer({
     schema: ApprovalDecision,
     ttl: APPROVAL_TTL.duration,
     // Site policy, not request policy. `approval-callback` reads it to
@@ -57,8 +57,8 @@ export default craft()
     meta: { requires: "configured-approver" },
   })
   .transform((request, exchange) => {
-    const decision = exchange.suspension.result;
-    const resumer = exchange.suspension.resumedBy?.subject;
+    const decision = exchange.deferral.result;
+    const resumer = exchange.deferral.resumedBy?.subject;
     // With no validator on the approval door nobody is verified, so the
     // approver the request named is who this is credited to: the link went
     // to that address and nowhere else. With a validator, the verified

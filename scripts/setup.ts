@@ -3,7 +3,7 @@
  *
  * Two secrets have no sensible default and cannot be committed: the API key
  * that secures every surface the harness exposes, and the secret the
- * suspension store signs resume links with. This script generates both and
+ * deferral store signs resume links with. This script generates both and
  * writes them where they are read from: `.env` for the process, and
  * `.routecraft/settings.yaml` for the CLI, so `craft exec` works with no
  * flags immediately.
@@ -99,7 +99,7 @@ const GENERATED = [
     note: "secures the approval, MCP, editor and ops surfaces",
   },
   {
-    name: "ROUTECRAFT_SUSPENSION_SECRET",
+    name: "ROUTECRAFT_DEFERRAL_SECRET",
     note: "signs the single-use links that resolve an approval",
   },
 ] as const;

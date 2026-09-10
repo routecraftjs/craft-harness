@@ -95,7 +95,7 @@ describe("approval link handling", () => {
     const booted = await bootServer((b) =>
       b
         .with({
-          suspension: {},
+          deferral: {},
           // The routes mount on `approvals`, and declaring mounts replaces
           // whatever bootServer would have supplied, so the server it binds
           // has to be declared here too. Port 0 lets the OS choose it.
@@ -145,7 +145,7 @@ describe("approval link handling", () => {
     const booted = await bootServer((b) =>
       b
         .with({
-          suspension: {},
+          deferral: {},
           servers: { default: { port: 0 } },
           http: { mounts: { approvals: { path: "/", auth: false } } },
         })
@@ -186,7 +186,7 @@ describe("approval link handling", () => {
     const booted = await bootServer((b) =>
       b
         .with({
-          suspension: {},
+          deferral: {},
           servers: { default: { port: 0 } },
           http: { mounts: { approvals: { path: "/", auth: false } } },
         })
@@ -266,7 +266,7 @@ describe("approval link handling", () => {
 
   /**
    * @case The confirmation page warns that the link will not wait
-   * @preconditions The TTL approval-park suspends with
+   * @preconditions The TTL approval-park defers with
    * @expectedResult The page names the same window, so an approver who has
    *   left the tab open knows the answer can still be refused
    */
@@ -301,7 +301,7 @@ describe("approval link handling", () => {
     const booted = await bootServer((b) =>
       b
         .with({
-          suspension: {},
+          deferral: {},
           servers: { default: { port: 0 } },
           http: { mounts: { approvals: { path: "/", auth: false } } },
         })

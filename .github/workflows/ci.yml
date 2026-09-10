@@ -34,7 +34,7 @@ jobs:
 
   # The promise the template makes: a clone that has run setup boots, walled,
   # with nothing else configured. `setup` generates the API key every surface
-  # verifies and the secret the suspension store signs links with; the model
+  # verifies and the secret the deferral store signs links with; the model
   # key is deliberately not a working one, and no mailbox, allowlist or search
   # key is set at all.
   #

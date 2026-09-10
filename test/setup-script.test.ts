@@ -83,7 +83,7 @@ describe("bun run setup", () => {
 
     expect((await envValue("CRAFT_API_KEY")).length).toBeGreaterThanOrEqual(32);
     expect(
-      (await envValue("ROUTECRAFT_SUSPENSION_SECRET")).length,
+      (await envValue("ROUTECRAFT_DEFERRAL_SECRET")).length,
     ).toBeGreaterThanOrEqual(32);
 
     const settings = await readFile(

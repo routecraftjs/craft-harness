@@ -16,7 +16,7 @@ import { z } from "zod";
  * What the tier gives: no network egress, no view of host processes, none of
  * the caller's privileges. What it does NOT give: protection from reading
  * files the calling user can read. `.env` is inside the same filesystem
- * view, and it carries `CRAFT_API_KEY` and `ROUTECRAFT_SUSPENSION_SECRET`,
+ * view, and it carries `CRAFT_API_KEY` and `ROUTECRAFT_DEFERRAL_SECRET`,
  * so the shell can read the credential that walls every surface and the key
  * that signs approval links.
  *
