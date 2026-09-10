@@ -87,7 +87,7 @@ export function decisionLinks(token: string): {
 /**
  * How long a decision link lives.
  *
- * Two spellings of one window: `duration` is what `.suspend()` parses, `human`
+ * Two spellings of one window: `duration` is what `.defer()` parses, `human`
  * is what the confirmation page tells the approver. Short because the link is
  * a bearer credential, and a request nobody answers within half an hour is
  * better re-asked than left live.

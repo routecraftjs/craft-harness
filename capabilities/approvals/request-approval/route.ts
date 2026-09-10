@@ -1,9 +1,9 @@
 import {
   type Path,
-  type Suspended,
+  type Deferred,
   craft,
   direct,
-  isSuspended,
+  isDeferred,
   mail,
   only,
 } from "@routecraft/routecraft";
@@ -18,7 +18,7 @@ import {
  * Ask a human for permission, and hand the agent the link to show them.
  *
  * One flow, two deliveries. `approval-park` does the parking and answers
- * with the framework's suspension acknowledgment; this route turns that
+ * with the framework's deferral acknowledgment; this route turns that
  * acknowledgment's token into the two links and returns them, so the link
  * lands in the tool result and the agent can put it straight into its
  * reply. When a mailbox is configured, the same links are also mailed to
@@ -34,7 +34,7 @@ import {
 interface ApprovalLinks {
   approveLink: string;
   denyLink: string;
-  suspensionId: string;
+  deferralId: string;
   expiresAt: string;
   approver: string;
   question: string;
@@ -81,20 +81,20 @@ export default craft()
   })
   .from<ApprovalRequest>(direct())
   .enrich(
-    direct<ApprovalRequest, Suspended>("approval-park"),
-    only((parked: Suspended) => parked, "parked"),
+    direct<ApprovalRequest, Deferred>("approval-park"),
+    only((parked: Deferred) => parked, "parked"),
   )
   // A park that did not happen means the request was answered synchronously,
   // which this flow has no way to have produced. Refusing beats handing the
   // agent a link built from a token that is not there.
   .filter((exchange) =>
-    isSuspended(exchange.body.parked)
+    isDeferred(exchange.body.parked)
       ? true
       : { reason: "approval-park did not park the request" },
   )
   .transform((body): ApprovalLinks => ({
     ...decisionLinks(body.parked.token),
-    suspensionId: body.parked.suspensionId,
+    deferralId: body.parked.deferralId,
     expiresAt: body.parked.expiresAt ?? "",
     approver: body.approver,
     question: body.question,

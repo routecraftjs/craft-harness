@@ -123,10 +123,10 @@ const envSchema = z.object({
     .transform((value) => value === "true"),
   HEARTBEAT_INTERVAL_MS: z.coerce.number().int().positive().default(3_600_000),
 
-  // At least 32 bytes, matching what the suspension runtime demands. Caught
+  // At least 32 bytes, matching what the deferral runtime demands. Caught
   // here so a short secret fails naming the variable rather than deep inside
   // plugin startup.
-  ROUTECRAFT_SUSPENSION_SECRET: z.string().min(32),
+  ROUTECRAFT_DEFERRAL_SECRET: z.string().min(32),
   APPROVAL_BASE_URL: z.url().default("http://localhost:8080"),
   APPROVERS: approvers,
 

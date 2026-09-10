@@ -316,7 +316,7 @@ export async function runWithScriptedEditor(
             toolPolicy: { fn: true, direct: true, mcp: false },
           },
           acp: { server: "default", agent: "aria" },
-          suspension: {},
+          deferral: {},
           servers: { default: { host: "127.0.0.1", port: 0 } },
         })
         .routes(options.routes),

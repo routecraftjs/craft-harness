@@ -138,7 +138,7 @@ export default craft()
                 isKnownApprover(principal.subject),
             },
           )
-          // The raw acknowledgment carries the suspension id, the internal
+          // The raw acknowledgment carries the deferral id, the internal
           // route id and absolute server paths, and this mount demands no
           // credential, so only the summary may reach the page.
           .header("routecraft.http.response.status", 200)

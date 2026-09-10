@@ -374,7 +374,7 @@ boundary.
 What the tier does not do is stop the script reading files the account running
 the harness can read. `.env` is in the same filesystem view, and it holds
 `CRAFT_API_KEY`, which is the credential walling every surface this harness
-exposes, and `ROUTECRAFT_SUSPENSION_SECRET`, which signs approval links.
+exposes, and `ROUTECRAFT_DEFERRAL_SECRET`, which signs approval links.
 `~/.ssh` is in there too. `network: false` does not contain what the shell
 reads, because the shell is not the turn's only way out: the same agent holds
 `web-fetch`, `mail-reply` and its own reply. Treat a command reaching this
@@ -523,7 +523,7 @@ two links, approve and deny, both single-use and both against the same parked
 exchange. The agent puts the link in its reply. When a mailbox is configured,
 the same links are also mailed to the approver.
 
-The parked half is `approval-park`, which suspends with a 30 minute TTL. Its
+The parked half is `approval-park`, which defers with a 30 minute TTL. Its
 continuation runs when someone answers, possibly days later and certainly in a
 different process, and posts the verdict back into the conversation that asked.
 Both links open `approval-confirm`, which renders the verdict and a form and
@@ -546,7 +546,7 @@ a validator on the `approvals` mount, at which point the callback's authorize
 hook starts demanding a verified approver.
 
 The page names the verdict, not the request. Reading a parked exchange by
-token needs `suspensionIdFor` and the configured store, and the framework
+token needs `deferralIdFor` and the configured store, and the framework
 exports neither to a route, so an approver arriving cold has to recognise
 which request they are answering from the mail that carried the link. Two
 pending approvals are therefore told apart by their mail, not by the page.
@@ -577,7 +577,7 @@ credential, so it has no business in a shared cache or in a `Referer`.
 
 `approval-park` is declared `direct({ internal: true })`. It exists to be
 called by `request-approval` and by nothing else: it carries no `.authorize()`
-because its caller does, and its answer to any other caller is a suspension
+because its caller does, and its answer to any other caller is a deferral
 acknowledgment nobody asked for. Internal keeps the in-process call working
 exactly as before and closes both external doors, so it is absent from
 `craft exec`, refused by name if someone tries, never offered to the agent,

@@ -15,7 +15,7 @@ import type { Decision } from "./approval.js";
  * ## Why these pages say so little
  *
  * None of them can name the request. Reading a parked exchange by token needs
- * `suspensionIdFor` and the configured store, and the framework exports
+ * `deferralIdFor` and the configured store, and the framework exports
  * neither to a route, so a page can only name the verdict. That is also why
  * every page here renders identically whether the token is live, spent or
  * fabricated: the page cannot tell, which means a caller holding a guess
@@ -92,7 +92,7 @@ export function refusalPage(): string {
 /**
  * What an approver sees once their answer is recorded.
  *
- * The acknowledgment carries the suspension id, the internal route id and the
+ * The acknowledgment carries the deferral id, the internal route id and the
  * server's own file paths. This mount demands no credential, so it is reduced
  * to one sentence and the detail stays in the logs.
  *
