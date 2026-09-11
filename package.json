@@ -12,9 +12,9 @@
     "format:write": "prettier . --write --ignore-unknown",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "boot-check": "NODE_ENV=development craft start --once --timeout 60000",
+    "boot-check": "NODE_ENV=development CRAFT_LOG_LEVEL=info craft start --once --timeout 60000",
     "all": "bun run format:write && bun run typecheck && bun run lint && bun run test",
-    "dev": "NODE_ENV=development craft start",
+    "dev": "NODE_ENV=development CRAFT_LOG_LEVEL=info craft start",
     "setup": "bun run scripts/setup.ts"
   },
   "dependencies": {

@@ -14,11 +14,23 @@ import { z } from "zod";
  * reach, whatever it says.
  *
  * What the tier gives: no network egress, no view of host processes, none of
- * the caller's privileges. What it does NOT give: protection from reading
- * files the calling user can read. `.env` is inside the same filesystem
- * view, and it carries `CRAFT_API_KEY` and `ROUTECRAFT_DEFERRAL_SECRET`,
- * so the shell can read the credential that walls every surface and the key
- * that signs approval links.
+ * the caller's privileges. What it does NOT give: any filesystem
+ * containment at all. The script reads and WRITES as the calling user,
+ * across that user's whole view.
+ *
+ * Reading is the obvious half. `.env` is inside the same filesystem view,
+ * and it carries `CRAFT_API_KEY` and `ROUTECRAFT_DEFERRAL_SECRET`, so the
+ * shell can read the credential that walls every surface and the key that
+ * signs approval links.
+ *
+ * Writing is the half worth saying out loud, because it is a different
+ * claim. This project's own files are in that view too: a script can
+ * rewrite `craft.config.ts`, which holds the validator every listener uses,
+ * or any route under `capabilities/`, or the `RUN_COMMAND_ALLOWLIST` the
+ * editor's shell reads. A model that can edit the guardrails is not
+ * constrained by them, and no option here changes that. What closes it is
+ * a container with only `workspace/` bind-mounted, which is the same answer
+ * as below.
  *
  * `network: false` does not contain that. The shell is not the only egress
  * in a turn: the same agent holds `web-fetch`, `mail-reply` and its own
@@ -55,7 +67,7 @@ export type BashInput = z.infer<typeof BashInput>;
 export default craft()
   .id("bash-runner")
   .description(
-    "Run a shell script in an isolated sandbox and return its output.",
+    "Run a shell script in a kernel isolation tier with no network. It reads and writes this machine's files as the user running the harness.",
   )
   .input({ body: BashInput })
   .from<BashInput>(direct())

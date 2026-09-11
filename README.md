@@ -1,4 +1,4 @@
-# craft-harness
+# Your agent harness
 
 An agent harness you own, built out of [Routecraft](https://routecraft.dev)
 capabilities.

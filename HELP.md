@@ -371,19 +371,32 @@ dangerous by reading it is a game the reader loses, and a checker that usually
 works teaches everyone to trust a boundary that is not one. The tier is the
 boundary.
 
-What the tier does not do is stop the script reading files the account running
-the harness can read. `.env` is in the same filesystem view, and it holds
-`CRAFT_API_KEY`, which is the credential walling every surface this harness
-exposes, and `ROUTECRAFT_DEFERRAL_SECRET`, which signs approval links.
-`~/.ssh` is in there too. `network: false` does not contain what the shell
-reads, because the shell is not the turn's only way out: the same agent holds
-`web-fetch`, `mail-reply` and its own reply. Treat a command reaching this
-tier as able to reach anything the account can read, and anything it reads as
-able to leave.
+What the tier does not do is contain the filesystem at all. The script reads
+and writes as the account running the harness, across everything that account
+can reach.
 
-Run this as a user whose files you are willing to let a model read, and keep
-the harness's own secrets somewhere that account cannot: a container whose
-only bind mount is `workspace/` is the shape that actually closes this.
+Reading is the obvious half. `.env` is in the same filesystem view, and it
+holds `CRAFT_API_KEY`, which is the credential walling every surface this
+harness exposes, and `ROUTECRAFT_DEFERRAL_SECRET`, which signs approval
+links. `~/.ssh` is in there too. `network: false` does not contain what the
+shell reads, because the shell is not the turn's only way out: the same agent
+holds `web-fetch`, `mail-reply` and its own reply.
+
+Writing is the half that is easy to miss, and it is a different claim. This
+project's own files are in that view: a script can rewrite `craft.config.ts`,
+which holds the validator every listener checks against, any route under
+`capabilities/`, or the `RUN_COMMAND_ALLOWLIST` that decides what the
+editor's shell may run without asking. A model that can edit the guardrails
+is not constrained by them.
+
+So treat a command reaching this tier as able to reach anything the account
+can read, anything it reads as able to leave, and every boundary in this
+repository as advisory while it is on.
+
+Run this as a user whose files you are willing to let a model read and
+change, and keep the harness's own secrets and code somewhere that account
+cannot write: a container whose only bind mount is `workspace/` is the shape
+that actually closes this.
 
 ### macOS
 
