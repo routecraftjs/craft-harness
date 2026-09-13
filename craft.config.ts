@@ -7,6 +7,26 @@ import {
 } from "@routecraft/routecraft";
 import { EDITOR_AGENT } from "./shared/defaults.js";
 import { env, mailConfigured, modelId } from "./env.js";
+import manifest from "./package.json";
+
+/**
+ * This project's identity, read from its own manifest rather than written
+ * out again here.
+ *
+ * It reaches a person in three places: `service.name` on every log line, the
+ * agent an editor lists over ACP, and the server an assistant lists over
+ * MCP. A project scaffolded from this template renames itself in
+ * `package.json` and nowhere else, so hardcoding the name here made every
+ * one of those three say `craft-harness` in somebody else's project.
+ *
+ * The title is the same name where a person reads it rather than a machine:
+ * an editor's agent picker shows the title, not the id.
+ */
+const PROJECT_TITLE = manifest.name
+  .split(/[-_]/)
+  .filter(Boolean)
+  .map((word) => `${word[0]!.toUpperCase()}${word.slice(1)}`)
+  .join(" ");
 
 /**
  * What the folder convention cannot work out on its own.
@@ -134,7 +154,7 @@ export const ariaTools = tools((catalog) => {
 });
 
 export const craftConfig: CraftConfig = defineConfig({
-  name: "craft-harness",
+  name: manifest.name,
 
   /**
    * Four listeners, deliberately not one. The approval door is opened by
@@ -241,16 +261,16 @@ export const craftConfig: CraftConfig = defineConfig({
     server: "editor",
     agent: EDITOR_AGENT,
     agentInfo: {
-      name: "craft-harness",
-      title: "Craft Harness",
-      version: "0.1.0",
+      name: manifest.name,
+      title: PROJECT_TITLE,
+      version: manifest.version,
     },
   },
 
   mcp: {
-    name: "craft-harness",
-    title: "Craft Harness",
-    version: "0.1.0",
+    name: manifest.name,
+    title: PROJECT_TITLE,
+    version: manifest.version,
     transport: "http",
     server: "mcp",
     // The resource identifier clients verify against (RFC 9728). Required
