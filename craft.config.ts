@@ -6,6 +6,7 @@ import {
   timingSafeStringEqual,
 } from "@routecraft/routecraft";
 import { EDITOR_AGENT } from "./shared/defaults.js";
+import { titleFromName } from "./shared/identity.js";
 import { env, mailConfigured, modelId } from "./env.js";
 import manifest from "./package.json";
 
@@ -22,11 +23,7 @@ import manifest from "./package.json";
  * The title is the same name where a person reads it rather than a machine:
  * an editor's agent picker shows the title, not the id.
  */
-const PROJECT_TITLE = manifest.name
-  .split(/[-_]/)
-  .filter(Boolean)
-  .map((word) => `${word[0]!.toUpperCase()}${word.slice(1)}`)
-  .join(" ");
+const PROJECT_TITLE = titleFromName(manifest.name);
 
 /**
  * What the folder convention cannot work out on its own.
