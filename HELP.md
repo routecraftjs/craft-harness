@@ -205,10 +205,13 @@ cause beneath it. Set `toolCallPayloads: false` on `acp` in `craft.config.ts`
 and the editor gets the error's class and code alone, because a message
 routinely echoes the argument it rejected.
 
-One known gap, reported upstream rather than worked around: **stopping a
-running command does not stop the command**. Cancelling the turn takes the
-surface away before the capability can send its kill and release, so the
-program keeps running in your terminal and you may need to stop it there.
+**Stopping a turn stops its command.** Once you press stop, the framework
+refuses every further call the capability makes to your editor, so the kill
+and release it would send on the way out never arrive. The terminal helper in
+`shared/editor-terminal.ts` registers both with `surface.onCancel` the moment
+the terminal exists, and the framework sends them once the cancelled turn has
+settled: the program is killed and the terminal released a moment after the
+editor reports the turn cancelled.
 
 ## Two conversations, not one
 

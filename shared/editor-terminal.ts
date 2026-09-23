@@ -56,7 +56,19 @@ export function linesOf(
   };
 }
 
-/** Run one command through the editor and answer with its result. */
+/**
+ * Run one command through the editor and answer with its result.
+ *
+ * A cancelled turn is the one ending this function cannot clean up after by
+ * itself: once the person presses stop, the framework refuses every further
+ * surface call from this exchange without sending it, so the kill and the
+ * release below would never reach the editor and the command would keep
+ * running in the person's terminal. The kill and release are therefore also
+ * registered with `surface.onCancel`, which the framework sends on the
+ * route's behalf after the cancelled turn settles. The registration is
+ * withdrawn only on the path that is about to release for itself; after a
+ * failure it stands, because a failure may be the cancel.
+ */
 export async function runInEditorTerminal(
   exchange: Exchange<unknown>,
   input: TerminalCommand,
@@ -72,6 +84,10 @@ export async function runInEditorTerminal(
   }).fetch(exchange);
 
   const terminalId = created.terminalId;
+  const withdrawCancelCleanup = surface.onCancel(exchange, [
+    { method: "terminal/kill", params: { terminalId } },
+    { method: "terminal/release", params: { terminalId } },
+  ]);
   let timedOut = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   // Aborted in `finally` to take the timeout's abort listener back off the
@@ -104,6 +120,7 @@ export async function runInEditorTerminal(
       exchange,
     );
 
+    withdrawCancelCleanup();
     return {
       command: input.command,
       args: input.args,
@@ -113,9 +130,8 @@ export async function runInEditorTerminal(
       timedOut,
     };
   } catch (error: unknown) {
-    // A cancelled turn still owns the child process it started. Kill it
-    // before letting the cancellation continue, or the person is left with
-    // something running in their terminal that nobody is waiting for.
+    // A failed wait or read leaves the child running; after a cancel this
+    // call is refused unsent and the registered kill goes instead.
     await Promise.resolve(
       surface("terminal/kill", { terminalId }).fetch(exchange),
     ).catch(() => undefined);
