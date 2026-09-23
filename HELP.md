@@ -78,10 +78,15 @@ instance; it does not start one. Forget, and the bridge exits naming the
 address and which file supplied it:
 
 ```
-Lost the connection to http://127.0.0.1:8082/acp (from the project profile
+Could not reach http://127.0.0.1:8082/acp (from the project profile
 /your/project/.routecraft/settings.yaml): Unable to connect. Is the computer
 able to access the url?
 ```
+
+Restarting the instance while the editor is open is fine. The bridge waits
+for the address to answer again and resumes every conversation the editor
+had open; only a turn that was running when the instance went away is lost,
+and it is answered as cancelled.
 
 ### JetBrains
 
@@ -195,13 +200,15 @@ refusal comes from the ACP adapter, which checks what your editor advertised
 before the call goes out; reaching a capability with no editor at all, from a
 schedule or from `craft exec`, is refused by the route itself.
 
-Two known gaps, both reported upstream rather than worked around. A failed
-tool call reaches the editor as the error's class name with no message, so
-you may see `RoutecraftError` in the editor while the agent itself was told
-what actually went wrong. And **stopping a running command does not stop the
-command**: cancelling the turn takes the surface away before the capability
-can send its kill and release, so the program keeps running in your terminal
-and you may need to stop it there.
+A failed tool call shows you the same reason the agent was told, with its
+cause beneath it. Set `toolCallPayloads: false` on `acp` in `craft.config.ts`
+and the editor gets the error's class and code alone, because a message
+routinely echoes the argument it rejected.
+
+One known gap, reported upstream rather than worked around: **stopping a
+running command does not stop the command**. Cancelling the turn takes the
+surface away before the capability can send its kill and release, so the
+program keeps running in your terminal and you may need to stop it there.
 
 ## Two conversations, not one
 
@@ -322,15 +329,15 @@ mail-reply     no            no       direct   Send an email.
 
 `craft ops health` says why:
 
-```json
-"mail-inbox": {
-  "status": "inactive",
-  "details": {
-    "lifecycle": "disabled",
-    "reason": "MAIL_ADDRESS, MAIL_APP_PASSWORD unset"
-  }
-}
 ```
+Routes
+  mail-inbox  inactive (deployment) lifecycle=disabled reason=MAIL_ADDRESS, MAIL_APP_PASSWORD unset
+  mail-reply  inactive (deployment) lifecycle=disabled reason=MAIL_ADDRESS, MAIL_APP_PASSWORD unset
+  heartbeat  inactive (deployment) lifecycle=disabled reason=HEARTBEAT_ENABLED is not true
+```
+
+`--format json` gives the same report as a document, with the reason under
+`routes["mail-inbox"].details.reason`.
 
 The reason is the predicate's own return value, so it names the variables
 actually missing rather than a sentence someone wrote once. `inactive` rather
