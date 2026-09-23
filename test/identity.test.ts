@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { craftConfig } from "../craft.config.js";
 import manifest from "../package.json";
+import { titleFromName } from "../shared/identity.js";
 
 /**
  * The project's name, on the three surfaces a person reads it.
@@ -36,7 +37,6 @@ describe("the project's identity", () => {
     const agentInfo = craftConfig.acp?.agentInfo;
     expect(agentInfo?.name).toBe(manifest.name);
     expect(agentInfo?.version).toBe(manifest.version);
-    expect(agentInfo?.title).not.toContain("craft-harness");
   });
 
   /**
@@ -50,11 +50,24 @@ describe("the project's identity", () => {
   });
 
   /**
-   * @case A hyphenated project name reads as words where a person sees it
-   * @preconditions The title is derived rather than written
-   * @expectedResult This repository's own name renders as "Craft Harness", which is the transform a scaffold called `acme-ops-agent` needs to produce "Acme Ops Agent"
+   * @case The title a person reads follows the manifest
+   * @preconditions acp.agentInfo and mcp present on the config
+   * @expectedResult Both titles are the manifest name run through `titleFromName`, whatever this project is called
+   */
+  test("the titles are derived from package.json", () => {
+    const title = titleFromName(manifest.name);
+    expect(craftConfig.acp?.agentInfo?.title).toBe(title);
+    expect(craftConfig.mcp?.title).toBe(title);
+  });
+
+  /**
+   * @case A hyphenated or underscored name reads as words
+   * @preconditions Literal names, independent of this project's own
+   * @expectedResult `craft-harness` is "Craft Harness", `acme-ops-agent` is "Acme Ops Agent", and `my_agent` is "My Agent"
    */
   test("the title is the name a person would write", () => {
-    expect(craftConfig.acp?.agentInfo?.title).toBe("Craft Harness");
+    expect(titleFromName("craft-harness")).toBe("Craft Harness");
+    expect(titleFromName("acme-ops-agent")).toBe("Acme Ops Agent");
+    expect(titleFromName("my_agent")).toBe("My Agent");
   });
 });

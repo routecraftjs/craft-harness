@@ -97,7 +97,8 @@ describe("the editor's files", () => {
    *   rather than answered short. Asking for the bound is what stops a
    *   gigabyte being read, serialised, sent and buffered here only to be
    *   turned down; refusing rather than truncating is what stops a model
-   *   reasoning about a file it thinks it read.
+   *   reasoning about a file it thinks it read. The editor is shown the
+   *   same reason the model is, not just the error class.
    */
   test("a file over the line limit is refused, and the limit was asked for", async () => {
     const run = await runWithScriptedEditor({
@@ -117,6 +118,7 @@ describe("the editor's files", () => {
     );
     expect(run.toolFailed).toBe(true);
     expect(run.modelSaw).toContain("longer than");
+    expect(run.toolText).toContain("longer than");
   });
 
   /**

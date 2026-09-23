@@ -5,7 +5,7 @@ on:
     branches: ["**"]
   pull_request:
   schedule:
-    # The published canary moves without this repository changing, so the
+    # The published scaffolder moves without this repository changing, so the
     # check runs on a clock as well as on a push.
     - cron: "0 6 * * *"
 
@@ -31,7 +31,7 @@ jobs:
           bun-version: latest
       - name: Scaffold a project from this branch
         run: |
-          bunx create-routecraft@canary my-agent \
+          bunx create-routecraft@latest my-agent \
             --yes --use-bun --no-git \
             --example "https://github.com/${{ github.repository }}/tree/${{ github.head_ref || github.ref_name }}/"
       - name: The scaffold kept its own identity

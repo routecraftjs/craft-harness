@@ -178,34 +178,26 @@ describe("run-command in the editor's terminal", () => {
   });
 
   /**
-   * @case (f) Cancelling stops the turn, and the terminal is left behind
+   * @case (f) Cancelling stops the turn, and the terminal is still cleaned up
    * @preconditions A long command, with the person cancelling once the wait
    *   is in flight, and four seconds of drain afterwards so nothing is
    *   attributed to closing the connection too early
-   * @expectedResult The prompt returns `cancelled`. It also records that
-   *   NEITHER `terminal/kill` NOR `terminal/release` arrives, which is not
-   *   what this capability asks for and not what it tries to do.
-   *
-   *   The route wraps the whole lifecycle so that a cancelled turn kills the
-   *   child and releases the terminal on the way out. It cannot: once the
-   *   turn is cancelled its surface is gone, so every call the cleanup would
-   *   make has nowhere to go. The command keeps running in the person's
-   *   editor and the terminal is never released.
-   *
-   *   This case pins the defect rather than hiding it. When routecraft lets
-   *   a route finish its cleanup against a cancelled turn, this test fails,
-   *   and the failure is the signal to change the two expectations below to
-   *   `toHaveLength(1)` and delete this paragraph.
+   * @expectedResult The prompt returns `cancelled`, and the editor receives
+   *   exactly one `terminal/kill` and one `terminal/release`. The route's
+   *   own calls are refused unsent after the cancel, so these are the pair
+   *   it registered with `surface.onCancel`, sent by the framework once the
+   *   turn settled. One of each, not two: a second release would mean the
+   *   refusal leaked through.
    */
-  test("f: cancelling returns cancelled, and cannot clean up (pins a gap)", async () => {
+  test("f: cancelling returns cancelled, and kills and releases the terminal", async () => {
     const run = await runCase(
       { command: "bun", args: ["-e", "await Bun.sleep(30000)"] },
       { permission: ALLOW, cancelOn: "terminal/wait_for_exit", drainMs: 4000 },
     );
 
     expect(run.stopReason).toBe("cancelled");
-    expect(run.callsTo("terminal/kill")).toHaveLength(0);
-    expect(run.callsTo("terminal/release")).toHaveLength(0);
+    expect(run.callsTo("terminal/kill")).toHaveLength(1);
+    expect(run.callsTo("terminal/release")).toHaveLength(1);
   });
 
   /**

@@ -26,7 +26,7 @@ import { env, modelId } from "../../../env.js";
  *
  * `WEB_FETCH_ALLOWED_HOSTS` has no default and there is no wildcard. A fresh
  * scaffold therefore has an empty allowlist, `.input()` refuses every URL
- * with `RC5002`, and the harness makes no outbound request at all until
+ * with `RC5065`, and the harness makes no outbound request at all until
  * someone decides where it may go. A template that shipped a working
  * fetch-anything tool would be handing every scaffolded project an egress
  * path its owner never chose.
