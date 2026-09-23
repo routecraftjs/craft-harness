@@ -200,10 +200,11 @@ refusal comes from the ACP adapter, which checks what your editor advertised
 before the call goes out; reaching a capability with no editor at all, from a
 schedule or from `craft exec`, is refused by the route itself.
 
-A failed tool call shows you the same reason the agent was told, with its
-cause beneath it. Set `toolCallPayloads: false` on `acp` in `craft.config.ts`
-and the editor gets the error's class and code alone, because a message
-routinely echoes the argument it rejected.
+A failed tool call shows you the same reason the agent was told, followed
+by its cause when it has one. Set `toolCallPayloads: false` on `acp` in
+`craft.config.ts` and the editor gets no tool arguments or results, and only
+the error's class and code for a failure, because a message routinely echoes
+the argument it rejected.
 
 **Stopping a turn stops its command.** Once you press stop, the framework
 refuses every further call the capability makes to your editor, so the kill
