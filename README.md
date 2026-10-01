@@ -6,7 +6,7 @@ capabilities.
 Chat, a sandboxed shell, web fetch and search, a workspace, memory, a
 scheduler, and human approvals. Every one of them is an ordinary route in
 `capabilities/` that you can read on one screen and change without asking
-anyone. There is no agent framework layer here: the framework is Routecraft,
+anyone. There is no agent framework layer here: the platform is Routecraft,
 and this repository is what a project built on it looks like.
 
 ## Five minutes
