@@ -38,7 +38,7 @@ the editor.
 
 Through that conversation Aria reads, edits, searches and runs things in the
 project you have open, using the editor's own files and terminal. Those are
-eight ordinary routes under `capabilities/editor/`, each with its guardrails
+nine ordinary routes under `capabilities/editor/`, each with its guardrails
 written where you can read and change them.
 
 `bun run setup` prints the two lines your editor needs and writes the profile
@@ -47,7 +47,7 @@ they resolve against:
 ```
 Talk to Aria from your editor. Command, arguments, and no shell:
   command: /path/to/your/project/node_modules/.bin/craft
-  arguments: acp /path/to/your/project --profile editor
+  arguments: acp --project /path/to/your/project --profile editor
 ```
 
 The command is an absolute path because JetBrains launches it without a
@@ -56,8 +56,8 @@ shell, so it inherits none of the PATH your login profile sets and a bare
 which is the one that matches the version the project pins.
 
 The arguments name this project's folder too. Your editor starts the command
-from whichever project it has open, and `craft acp` reads the profile from
-the folder it is given, so the entry works from every window.
+from whichever project it has open, and `--project` tells `craft acp` which
+folder's settings to read, so the entry works from every window.
 
 Neither line carries an address or a credential. Both live in the `editor`
 profile `setup` wrote into `.routecraft/settings.yaml`:

@@ -235,7 +235,9 @@ describe("bun run setup", () => {
     const output = await run({ PATH: pathWith(bin) });
 
     expect(output).toContain(`command: ${join(bin, "craft")}`);
-    expect(output).toContain(`arguments: acp ${scratch} --profile editor`);
+    expect(output).toContain(
+      `arguments: acp --project ${scratch} --profile editor`,
+    );
   });
 
   /**
