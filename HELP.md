@@ -47,13 +47,17 @@ they resolve against:
 ```
 Talk to Aria from your editor. Command, arguments, and no shell:
   command: /path/to/your/project/node_modules/.bin/craft
-  arguments: acp --profile editor
+  arguments: acp /path/to/your/project --profile editor
 ```
 
 The command is an absolute path because JetBrains launches it without a
 shell, so it inherits none of the PATH your login profile sets and a bare
 `craft` resolves to nothing. It is also the `craft` this project installed,
 which is the one that matches the version the project pins.
+
+The arguments name this project's folder too. Your editor starts the command
+from whichever project it has open, and `craft acp` reads the profile from
+the folder it is given, so the entry works from every window.
 
 Neither line carries an address or a credential. Both live in the `editor`
 profile `setup` wrote into `.routecraft/settings.yaml`:
