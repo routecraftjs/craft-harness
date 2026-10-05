@@ -296,7 +296,7 @@ export const craftConfig: CraftConfig = defineConfig({
                 host: env.MAIL_SMTP_HOST,
                 port: env.MAIL_SMTP_PORT,
                 secure: false,
-                requireTLS: true,
+                // STARTTLS is opportunistic: routecraft has no requireTLS option to enforce it yet.
                 auth: { user: env.MAIL_ADDRESS, pass: env.MAIL_APP_PASSWORD },
                 from: env.MAIL_ADDRESS,
               },

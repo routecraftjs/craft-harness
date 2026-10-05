@@ -224,9 +224,10 @@ describe("bun run setup", () => {
   /**
    * @case The printed editor entry carries an absolute command
    * @preconditions A `craft` reachable on PATH and none in node_modules
-   * @expectedResult The full path and the profile flag, because JetBrains
-   *   launches the command with no shell and a bare `craft` resolves to
-   *   nothing there
+   * @expectedResult The full path, because JetBrains launches the command
+   *   with no shell and a bare `craft` resolves to nothing there; and this
+   *   project's folder before the profile flag, because an editor starts the
+   *   command from whichever project it has open and the profile lives here
    */
   test("prints the editor entry with the full path to craft", async () => {
     const bin = await fakeCraftOnPath();
@@ -234,7 +235,9 @@ describe("bun run setup", () => {
     const output = await run({ PATH: pathWith(bin) });
 
     expect(output).toContain(`command: ${join(bin, "craft")}`);
-    expect(output).toContain("arguments: acp --profile editor");
+    expect(output).toContain(
+      `arguments: acp --project ${scratch} --profile editor`,
+    );
   });
 
   /**
@@ -247,7 +250,7 @@ describe("bun run setup", () => {
     const output = await run({ PATH: pathWith(join(scratch, "empty")) });
 
     expect(output).toContain("could not find the `craft` binary");
-    expect(output).not.toContain("arguments: acp --profile editor");
+    expect(output).not.toContain("arguments: acp");
   });
 
   /**
