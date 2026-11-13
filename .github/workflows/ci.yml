@@ -76,3 +76,14 @@ jobs:
           test -z "$(git status --porcelain)" || {
             echo "setup left tracked changes:"; git status --porcelain; exit 1;
           }
+
+  ci-passed:
+    needs: [validate, boot]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      # always(): without it the `if` is ANDed with success(), which is false
+      # once a needed job was cancelled, and the step is skipped.
+      - name: Fail when a job failed, was cancelled or was skipped
+        if: always() && (needs.validate.result != 'success' || needs.boot.result != 'success')
+        run: exit 1
