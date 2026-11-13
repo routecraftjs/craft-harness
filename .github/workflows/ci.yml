@@ -81,6 +81,7 @@ jobs:
     needs: [validate, boot]
     if: always()
     runs-on: ubuntu-latest
+    permissions: {}
     steps:
       # always(): without it the `if` is ANDed with success(), which is false
       # once a needed job was cancelled, and the step is skipped.
